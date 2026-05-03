@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
     currentInstanceWorld: null,
     currentInstanceUsersData: null,
     currentUser: null,
+    danceAggregateByUserId: null,
+    ensureDanceDataLoaded: vi.fn(),
     saveChatboxUserBlacklist: vi.fn(),
     showUserDialog: vi.fn(),
     lookupUser: vi.fn(),
@@ -39,6 +41,10 @@ vi.mock('vue-i18n', () => ({
 vi.mock('../../../stores', () => ({
     useAppearanceSettingsStore: () => ({
         randomUserColours: mocks.randomUserColours
+    }),
+    useDanceStore: () => ({
+        danceAggregateByUserId: mocks.danceAggregateByUserId,
+        ensureDanceDataLoaded: (...args) => mocks.ensureDanceDataLoaded(...args)
     }),
     usePhotonStore: () => ({
         photonLoggingEnabled: mocks.photonLoggingEnabled,
@@ -200,7 +206,9 @@ describe('PlayerList.vue', () => {
             id: 'usr_me',
             $homeLocation: null
         });
+        mocks.danceAggregateByUserId = ref(new Map());
 
+        mocks.ensureDanceDataLoaded.mockReset();
         mocks.saveChatboxUserBlacklist.mockReset();
         mocks.showUserDialog.mockReset();
         mocks.lookupUser.mockReset();
@@ -224,6 +232,7 @@ describe('PlayerList.vue', () => {
         });
 
         expect(mocks.getCurrentInstanceUserList).toHaveBeenCalledTimes(1);
+        expect(mocks.ensureDanceDataLoaded).toHaveBeenCalledTimes(1);
         expect(mocks.tableSetOptions).toHaveBeenCalledTimes(1);
         expect(mocks.photonColumnToggleVisibility).toHaveBeenCalledWith(false);
     });

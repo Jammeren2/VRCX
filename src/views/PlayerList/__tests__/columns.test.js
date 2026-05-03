@@ -172,6 +172,32 @@ describe('views/PlayerList/columns.jsx', () => {
         expect(iconCol.sortingFn(master, friend, 'icon')).toBeGreaterThan(0);
     });
 
+    test('dances column sorts by injected dance aggregate count', () => {
+        const cols = createColumns({
+            randomUserColours: { value: false, __v_isRef: true },
+            chatboxUserBlacklist: { value: new Map(), __v_isRef: true },
+            danceAggregateByUserId: {
+                value: new Map([
+                    ['usr_1', { count: 3 }],
+                    ['usr_2', { count: 1 }]
+                ]),
+                __v_isRef: true
+            },
+            onBlockChatbox: mocks.onBlockChatbox,
+            onUnblockChatbox: mocks.onUnblockChatbox,
+            sortAlphabetically: mocks.sortAlphabetically
+        });
+        const dancesCol = cols.find((c) => c.id === 'dances');
+
+        const result = dancesCol.sortingFn(
+            { original: { ref: { id: 'usr_1' } } },
+            { original: { ref: { id: 'usr_2' } } }
+        );
+
+        expect(result).toBe(2);
+        expect(dancesCol.cell({ row: makeRow() }).children).toContain(3);
+    });
+
     test('bioLink cell opens external link when favicon is clicked', () => {
         const row = makeRow({
             ref: {

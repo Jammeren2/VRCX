@@ -278,6 +278,7 @@
                 </div>
             </TooltipWrapper>
         </template>
+        <UserDancePanel />
         <div class="box-border flex items-center p-1.5 text-[13px] cursor-default w-[167px]">
             <TooltipWrapper :side="currentUser.id !== userDialog.id ? 'bottom' : 'top'">
                 <template #content>
@@ -515,6 +516,7 @@
     import { showGroupDialog } from '../../../coordinators/groupCoordinator';
 
     import EditNoteAndMemoDialog from './EditNoteAndMemoDialog.vue';
+    import UserDancePanel from './UserDancePanel.vue';
 
     defineEmits(['showBioDialog']);
 

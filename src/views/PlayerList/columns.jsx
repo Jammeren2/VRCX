@@ -62,11 +62,15 @@ const sortInstanceIcon = (a, b) =>
 export const createColumns = ({
     randomUserColours,
     chatboxUserBlacklist,
+    danceAggregateByUserId,
     onBlockChatbox,
     onUnblockChatbox,
     sortAlphabetically,
     userImage
 }) => {
+    const getDanceCount = (userId) =>
+        danceAggregateByUserId?.value?.get?.(userId)?.count ?? 0;
+
     const cols = [
         {
             id: 'avatar',
@@ -251,7 +255,7 @@ export const createColumns = ({
                 class: 'text-center',
                 label: () => t('table.playerList.icon')
             },
-            sortingFn: (rowA, rowB, columnId) => {
+            sortingFn: (rowA, rowB) => {
                 const a = rowA.original;
                 const b = rowB.original;
                 return -sortInstanceIcon(a, b);
@@ -447,6 +451,28 @@ export const createColumns = ({
                         ? String(note)
                         : '';
                 return <span>{text}</span>;
+            }
+        },
+        {
+            id: 'dances',
+            accessorFn: (row) => getDanceCount(row?.ref?.id),
+            header: ({ column }) =>
+                sortButton({
+                    column,
+                    label: () => t('table.playerList.dances'),
+                    descFirst: true
+                }),
+            size: 100,
+            meta: {
+                class: 'text-right',
+                label: () => t('table.playerList.dances')
+            },
+            sortingFn: (rowA, rowB) =>
+                getDanceCount(rowA.original?.ref?.id) -
+                getDanceCount(rowB.original?.ref?.id),
+            cell: ({ row }) => {
+                const count = getDanceCount(row.original?.ref?.id);
+                return count ? <span>{count}</span> : null;
             }
         }
     ];

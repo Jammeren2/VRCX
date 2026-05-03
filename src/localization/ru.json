@@ -5,6 +5,7 @@
         "feed": "Лента",
         "game_log": "Журнал игры",
         "player_list": "Список игроков",
+        "dances": "Оттанцованные",
         "search": "Поиск",
         "favorites": "Избранное",
         "friend_log": "Журнал друзей",
@@ -88,6 +89,11 @@
                 "chatbox_blacklist": "Чатбокс черный список",
                 "status_tooltip": "Статус компаньона VRCX"
             }
+        },
+        "dances": {
+            "search_placeholder": "Поиск оттанцованных пользователей",
+            "note_placeholder": "Заметка по танцу",
+            "history": "История танцев"
         },
         "search": {
             "search_placeholder": "Поиск",
@@ -539,6 +545,15 @@
         }
     },
     "dialog": {
+        "alertdialog": {
+            "ok": "OK",
+            "cancel": "Отмена",
+            "confirm": "Подтвердить"
+        },
+        "dances": {
+            "history_title": "История танцев: {name}",
+            "delete_event": "Удалить танец"
+        },
         "user": {
             "status": {
                 "active": "Активный",
@@ -621,6 +636,11 @@
                 "join_count": "Счетчик присоединений",
                 "time_together": "Время вместе",
                 "play_time": "Время игры",
+                "dances": "Танцы",
+                "dance_count": "Оттанцовано {count} раз",
+                "last_danced_at": "Последний: {date}",
+                "add_dance": "Добавить танец",
+                "remove_dance": "Убрать танец",
                 "online_for": "В сети",
                 "offline_for": "Не в сети",
                 "last_activity": "Последняя активность",
@@ -1657,6 +1677,9 @@
         "badge": {
             "updated": "Значок обновлен"
         },
+        "dances": {
+            "added": "Танец добавлен"
+        },
         "instance": {
             "closed": "Инстанс закрыт",
             "removed_form_queue": "Удален инстанс {worldName} из очереди",
@@ -1711,10 +1734,19 @@
             "language": "Язык",
             "bioLink": "Био Ссылки",
             "note": "Заметка",
+            "dances": "Танцы",
             "date": "Дата",
             "user": "Пользователь",
             "type": "Тип",
             "detail": "Подробная информация"
+        },
+        "dances": {
+            "date": "Дата",
+            "user": "Пользователь",
+            "count": "Танцы",
+            "lastDancedAt": "Последний танец",
+            "note": "Заметка по танцу",
+            "action": "Действие"
         },
         "friendLog": {
             "date": "Дата",

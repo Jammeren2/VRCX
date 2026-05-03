@@ -97,6 +97,9 @@ vi.mock('../../Settings/dialogs/PrimaryPasswordDialog.vue', () => ({
 vi.mock('../../../components/dialogs/SendBoopDialog.vue', () => ({
     default: { template: '<div />' }
 }));
+vi.mock('../../../components/dialogs/DanceHistoryDialog.vue', () => ({
+    default: { template: '<div />' }
+}));
 vi.mock('../../Settings/dialogs/ChangelogDialog.vue', () => ({
     default: { template: '<div />' }
 }));

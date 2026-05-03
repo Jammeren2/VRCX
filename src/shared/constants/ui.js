@@ -30,6 +30,13 @@ const navDefinitions = [
         routeName: 'player-list'
     },
     {
+        key: 'dances',
+        icon: 'ri-music-2-line',
+        tooltip: 'nav_tooltip.dances',
+        labelKey: 'nav_tooltip.dances',
+        routeName: 'dances'
+    },
+    {
         key: 'search',
         icon: 'ri-search-line',
         tooltip: 'nav_tooltip.search',

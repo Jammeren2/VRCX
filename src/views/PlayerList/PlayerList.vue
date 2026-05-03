@@ -188,6 +188,7 @@
 
     import {
         useAppearanceSettingsStore,
+        useDanceStore,
         useGalleryStore,
         useInstanceStore,
         useLocationStore,
@@ -210,6 +211,8 @@
 
     const { randomUserColours } = storeToRefs(useAppearanceSettingsStore());
     const { userImage } = useUserDisplay();
+    const danceStore = useDanceStore();
+    const { danceAggregateByUserId } = storeToRefs(danceStore);
     const photonStore = usePhotonStore();
     const { photonLoggingEnabled, chatboxUserBlacklist } = storeToRefs(photonStore);
     const { saveChatboxUserBlacklist } = photonStore;
@@ -299,6 +302,7 @@
         createColumns({
             randomUserColours,
             chatboxUserBlacklist,
+            danceAggregateByUserId,
             onBlockChatbox: addChatboxUserBlacklist,
             onUnblockChatbox: deleteChatboxUserBlacklist,
             sortAlphabetically,
@@ -339,17 +343,17 @@
         { immediate: true }
     );
 
-    const playerListTotalItems = computed(() => playerListTable.getRowModel().rows.length);
-
     const handlePlayerListRowClick = (row) => {
         selectCurrentInstanceRow(row?.original ?? null);
     };
 
     onMounted(() => {
+        danceStore.ensureDanceDataLoaded();
         getCurrentInstanceUserList();
     });
 
     onActivated(() => {
+        danceStore.ensureDanceDataLoaded();
         getCurrentInstanceUserList();
     });
 </script>

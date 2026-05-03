@@ -1,0 +1,1829 @@
+diff --git a/README-DANCES.md b/README-DANCES.md
+new file mode 100644
+index 00000000..69add28a
+--- /dev/null
++++ b/README-DANCES.md
+@@ -0,0 +1,64 @@
++# VRCX: патч "Оттанцованные"
++
++Этот fork/patch добавляет локальную вкладку "Оттанцованные" в VRCX. Данные
++хранятся в локальной SQLite-базе VRCX и привязаны к текущему аккаунту VRCX.
++
++## Сборка
++
++Требования:
++
++- Node.js `>=24.10.0`
++- npm `>=11.5.0`
++- .NET SDK 10 для CEF-билда
++- Visual Studio Build Tools для Windows CEF-билда
++- 7-Zip и NSIS для полного zip/installer pipeline
++
++Проверочный release-билд:
++
++```powershell
++npm ci
++npm run prod
++dotnet build Dotnet\VRCX-Cef.csproj -p:Configuration=Release -p:WarningLevel=0 -p:Platform=x64 -p:PlatformTarget=x64 -p:RestorePackagesConfig=true -t:"Restore;Clean;Build" -m -a x64 --self-contained
++build-scripts\make-junction.cmd
++```
++
++Запуск собранного приложения:
++
++```powershell
++build\Cef\VRCX.exe
++```
++
++Полная сборка zip/installer из Visual Studio Developer PowerShell:
++
++```powershell
++.\build-scripts\build-all.ps1
++```
++
++Ожидаемые результаты:
++
++- `VRCX_YYYYMMDD.zip`
++- `VRCX_YYYYMMDD_Setup.exe`
++- `SHA256SUMS.txt`
++
++## Перенос на новую версию VRCX
++
++Держите изменения танцев отдельной веткой и небольшим patch-файлом:
++
++```powershell
++git switch -c feature/dances
++New-Item -ItemType Directory -Force patches
++git diff --output=patches\vrcx-dances.patch -- . ':!patches/vrcx-dances.patch'
++```
++
++После обновления VRCX:
++
++```powershell
++git remote add upstream https://github.com/vrcx-team/VRCX.git
++git fetch upstream
++git rebase upstream/master
++git apply patches\vrcx-dances.patch
++```
++
++Основная логика танцев лежит в новых файлах. Существующие файлы VRCX изменены
++только как точки подключения: инициализация базы, stores, router/nav, профиль
++пользователя, layout-диалог и таблица "Список игроков".
+diff --git a/src/components/dialogs/DanceHistoryDialog.vue b/src/components/dialogs/DanceHistoryDialog.vue
+new file mode 100644
+index 00000000..0cb6376e
+--- /dev/null
++++ b/src/components/dialogs/DanceHistoryDialog.vue
+@@ -0,0 +1,89 @@
++<template>
++    <Dialog :open="danceHistoryDialog.visible" @update:open="handleOpenChange">
++        <DialogContent class="x-dialog sm:max-w-150 translate-y-0" style="top: 10vh">
++            <DialogHeader>
++                <DialogTitle>
++                    {{
++                        t('dialog.dances.history_title', {
++                            name: danceHistoryDialog.displayName || danceHistoryDialog.userId
++                        })
++                    }}
++                </DialogTitle>
++            </DialogHeader>
++
++            <div v-if="danceHistoryDialog.loading" class="flex min-h-32 items-center justify-center">
++                <Spinner />
++            </div>
++            <div
++                v-else-if="!danceHistoryDialog.events.length"
++                class="flex min-h-32 items-center justify-center text-sm text-muted-foreground">
++                {{ t('common.no_data') }}
++            </div>
++            <div v-else class="max-h-96 overflow-auto rounded-md border">
++                <table class="w-full table-fixed text-sm">
++                    <thead>
++                        <tr class="border-b bg-background">
++                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
++                                {{ t('table.dances.date') }}
++                            </th>
++                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
++                                {{ t('table.dances.user') }}
++                            </th>
++                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-right font-medium">
++                                {{ t('table.dances.action') }}
++                            </th>
++                        </tr>
++                    </thead>
++                    <tbody>
++                        <tr v-for="event in danceHistoryDialog.events" :key="event.id" class="border-b last:border-b-0">
++                            <td class="px-3 py-2">{{ formatDateFilter(event.dancedAt, 'long') }}</td>
++                            <td class="truncate px-3 py-2">
++                                {{ event.displayName || danceHistoryDialog.displayName }}
++                            </td>
++                            <td class="px-3 py-2 text-right">
++                                <TooltipWrapper side="top" :content="t('dialog.dances.delete_event')">
++                                    <Button variant="ghost" size="icon-sm" @click="deleteEvent(event.id)">
++                                        <Trash2 class="h-4 w-4 text-destructive" />
++                                    </Button>
++                                </TooltipWrapper>
++                            </td>
++                        </tr>
++                    </tbody>
++                </table>
++            </div>
++
++            <DialogFooter>
++                <Button variant="secondary" @click="danceStore.closeDanceHistory">
++                    {{ t('dialog.alertdialog.cancel') }}
++                </Button>
++            </DialogFooter>
++        </DialogContent>
++    </Dialog>
++</template>
++
++<script setup>
++    import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
++    import { Button } from '@/components/ui/button';
++    import { Spinner } from '@/components/ui/spinner';
++    import { TooltipWrapper } from '@/components/ui/tooltip';
++    import { Trash2 } from 'lucide-vue-next';
++    import { storeToRefs } from 'pinia';
++    import { useI18n } from 'vue-i18n';
++
++    import { formatDateFilter } from '../../shared/utils';
++    import { useDanceStore } from '../../stores';
++
++    const { t } = useI18n();
++    const danceStore = useDanceStore();
++    const { danceHistoryDialog } = storeToRefs(danceStore);
++
++    function handleOpenChange(open) {
++        if (!open) {
++            danceStore.closeDanceHistory();
++        }
++    }
++
++    function deleteEvent(id) {
++        danceStore.deleteDanceEvent(id);
++    }
++</script>
+diff --git a/src/components/dialogs/UserDialog/UserDancePanel.vue b/src/components/dialogs/UserDialog/UserDancePanel.vue
+new file mode 100644
+index 00000000..cd9a9bac
+--- /dev/null
++++ b/src/components/dialogs/UserDialog/UserDancePanel.vue
+@@ -0,0 +1,99 @@
++<template>
++    <div
++        v-if="currentUser.id !== userDialog.id"
++        class="box-border flex items-center p-1.5 text-[13px] cursor-default w-full"
++        data-testid="user-dance-panel">
++        <div class="flex-1 overflow-hidden">
++            <div class="mb-1 flex items-center justify-between gap-2">
++                <span class="block truncate font-medium leading-[18px]">
++                    {{ t('dialog.user.info.dances') }}
++                </span>
++                <div class="flex items-center gap-1">
++                    <TooltipWrapper side="top" :content="t('dialog.user.info.add_dance')">
++                        <Button
++                            variant="ghost"
++                            size="icon-sm"
++                            data-testid="add-dance"
++                            :disabled="isSaving"
++                            @click="addDance">
++                            <Plus class="h-4 w-4" />
++                        </Button>
++                    </TooltipWrapper>
++                    <TooltipWrapper side="top" :content="t('dialog.user.info.remove_dance')">
++                        <Button
++                            variant="ghost"
++                            size="icon-sm"
++                            data-testid="remove-dance"
++                            :disabled="danceAggregate.count === 0"
++                            @click="showDanceHistory">
++                            <ListMinus class="h-4 w-4" />
++                        </Button>
++                    </TooltipWrapper>
++                </div>
++            </div>
++            <div class="text-xs">
++                <span>
++                    {{
++                        t('dialog.user.info.dance_count', {
++                            count: danceAggregate.count
++                        })
++                    }}
++                </span>
++                <span v-if="danceAggregate.lastDancedAt" class="ml-2 text-muted-foreground">
++                    {{
++                        t('dialog.user.info.last_danced_at', {
++                            date: formatDateFilter(danceAggregate.lastDancedAt, 'long')
++                        })
++                    }}
++                </span>
++            </div>
++            <pre
++                v-if="danceAggregate.note"
++                class="mt-1 text-xs font-[inherit]"
++                style="white-space: pre-wrap; margin-right: 0.5em; max-height: 120px; overflow-y: auto"
++                >{{ danceAggregate.note }}</pre
++            >
++        </div>
++    </div>
++</template>
++
++<script setup>
++    import { Button } from '@/components/ui/button';
++    import { ListMinus, Plus } from 'lucide-vue-next';
++    import { computed, onMounted, ref } from 'vue';
++    import { storeToRefs } from 'pinia';
++    import { toast } from 'vue-sonner';
++    import { useI18n } from 'vue-i18n';
++
++    import { formatDateFilter } from '../../../shared/utils';
++    import { TooltipWrapper } from '../../ui/tooltip';
++    import { useDanceStore, useUserStore } from '../../../stores';
++
++    const { t } = useI18n();
++    const danceStore = useDanceStore();
++    const { userDialog, currentUser } = storeToRefs(useUserStore());
++    const isSaving = ref(false);
++
++    const danceAggregate = computed(() => danceStore.getDanceAggregate(userDialog.value.id));
++
++    onMounted(() => {
++        danceStore.ensureDanceDataLoaded();
++    });
++
++    async function addDance() {
++        if (isSaving.value) {
++            return;
++        }
++        isSaving.value = true;
++        try {
++            await danceStore.addDanceForUser(userDialog.value.ref);
++            toast.success(t('message.dances.added'));
++        } finally {
++            isSaving.value = false;
++        }
++    }
++
++    function showDanceHistory() {
++        danceStore.openDanceHistory(userDialog.value.ref);
++    }
++</script>
+diff --git a/src/components/dialogs/UserDialog/UserDialogInfoTab.vue b/src/components/dialogs/UserDialog/UserDialogInfoTab.vue
+index 8d6b6aed..8359c757 100644
+--- a/src/components/dialogs/UserDialog/UserDialogInfoTab.vue
++++ b/src/components/dialogs/UserDialog/UserDialogInfoTab.vue
+@@ -278,6 +278,7 @@
+                 </div>
+             </TooltipWrapper>
+         </template>
++        <UserDancePanel />
+         <div class="box-border flex items-center p-1.5 text-[13px] cursor-default w-[167px]">
+             <TooltipWrapper :side="currentUser.id !== userDialog.id ? 'bottom' : 'top'">
+                 <template #content>
+@@ -515,6 +516,7 @@
+     import { showGroupDialog } from '../../../coordinators/groupCoordinator';
+ 
+     import EditNoteAndMemoDialog from './EditNoteAndMemoDialog.vue';
++    import UserDancePanel from './UserDancePanel.vue';
+ 
+     defineEmits(['showBioDialog']);
+ 
+diff --git a/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js b/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js
+new file mode 100644
+index 00000000..facdc8e0
+--- /dev/null
++++ b/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js
+@@ -0,0 +1,148 @@
++import { beforeEach, describe, expect, test, vi } from 'vitest';
++import { mount } from '@vue/test-utils';
++import { nextTick, ref } from 'vue';
++
++const mocks = vi.hoisted(() => ({
++    currentUser: null,
++    userDialog: null,
++    aggregate: null,
++    ensureDanceDataLoaded: vi.fn(),
++    addDanceForUser: vi.fn(),
++    openDanceHistory: vi.fn(),
++    toastSuccess: vi.fn()
++}));
++
++vi.mock('pinia', async (importOriginal) => {
++    const actual = await importOriginal();
++    return {
++        ...actual,
++        storeToRefs: (store) => store
++    };
++});
++
++vi.mock('vue-i18n', () => ({
++    useI18n: () => ({
++        t: (key, params) => {
++            if (key === 'dialog.user.info.dance_count') {
++                return `Danced ${params.count} times`;
++            }
++            if (key === 'dialog.user.info.last_danced_at') {
++                return `Last: ${params.date}`;
++            }
++            return key;
++        }
++    })
++}));
++
++vi.mock('vue-sonner', () => ({
++    toast: {
++        success: (...args) => mocks.toastSuccess(...args)
++    }
++}));
++
++vi.mock('@/components/ui/button', () => ({
++    Button: {
++        props: ['disabled'],
++        emits: ['click'],
++        template:
++            '<button :disabled="disabled" @click="$emit(\'click\', $event)"><slot /></button>'
++    }
++}));
++
++vi.mock('../../../ui/tooltip', () => ({
++    TooltipWrapper: { template: '<div><slot /></div>' }
++}));
++
++vi.mock('lucide-vue-next', () => ({
++    ListMinus: { template: '<span />' },
++    Plus: { template: '<span />' }
++}));
++
++vi.mock('../../../../shared/utils', () => ({
++    formatDateFilter: (value) => `formatted:${value}`
++}));
++
++vi.mock('../../../../stores', () => ({
++    useUserStore: () => ({
++        currentUser: mocks.currentUser,
++        userDialog: mocks.userDialog
++    }),
++    useDanceStore: () => ({
++        ensureDanceDataLoaded: (...args) =>
++            mocks.ensureDanceDataLoaded(...args),
++        addDanceForUser: (...args) => mocks.addDanceForUser(...args),
++        openDanceHistory: (...args) => mocks.openDanceHistory(...args),
++        getDanceAggregate: () => mocks.aggregate.value
++    })
++}));
++
++import UserDancePanel from '../UserDancePanel.vue';
++
++describe('UserDancePanel.vue', () => {
++    beforeEach(() => {
++        mocks.currentUser = ref({ id: 'usr_me' });
++        mocks.userDialog = ref({
++            id: 'usr_1',
++            ref: {
++                id: 'usr_1',
++                displayName: 'Alice'
++            }
++        });
++        mocks.aggregate = ref({
++            userId: 'usr_1',
++            displayName: 'Alice',
++            count: 2,
++            lastDancedAt: '2026-05-04T01:02:03.000Z',
++            note: 'great musicality'
++        });
++
++        mocks.ensureDanceDataLoaded.mockReset();
++        mocks.addDanceForUser.mockReset();
++        mocks.openDanceHistory.mockReset();
++        mocks.toastSuccess.mockReset();
++        mocks.addDanceForUser.mockResolvedValue(mocks.aggregate.value);
++    });
++
++    test('loads dance data and shows aggregate for another user', () => {
++        const wrapper = mount(UserDancePanel);
++
++        expect(mocks.ensureDanceDataLoaded).toHaveBeenCalledTimes(1);
++        expect(wrapper.text()).toContain('Danced 2 times');
++        expect(wrapper.text()).toContain(
++            'Last: formatted:2026-05-04T01:02:03.000Z'
++        );
++        expect(wrapper.text()).toContain('great musicality');
++    });
++
++    test('hides panel for own profile', () => {
++        mocks.userDialog.value.id = 'usr_me';
++
++        const wrapper = mount(UserDancePanel);
++
++        expect(wrapper.find('[data-testid="user-dance-panel"]').exists()).toBe(
++            false
++        );
++    });
++
++    test('add button records a dance for the dialog user', async () => {
++        const wrapper = mount(UserDancePanel);
++
++        await wrapper.get('[data-testid="add-dance"]').trigger('click');
++        await nextTick();
++
++        expect(mocks.addDanceForUser).toHaveBeenCalledWith(
++            mocks.userDialog.value.ref
++        );
++        expect(mocks.toastSuccess).toHaveBeenCalledWith('message.dances.added');
++    });
++
++    test('remove button opens dance history', async () => {
++        const wrapper = mount(UserDancePanel);
++
++        await wrapper.get('[data-testid="remove-dance"]').trigger('click');
++
++        expect(mocks.openDanceHistory).toHaveBeenCalledWith(
++            mocks.userDialog.value.ref
++        );
++    });
++});
+diff --git a/src/components/nav-menu/navLayoutDefaults.js b/src/components/nav-menu/navLayoutDefaults.js
+index a755faa8..3c8a2f74 100644
+--- a/src/components/nav-menu/navLayoutDefaults.js
++++ b/src/components/nav-menu/navLayoutDefaults.js
+@@ -6,6 +6,7 @@ export function createBaseDefaultNavLayout(t) {
+         { type: 'item', key: 'friends-locations' },
+         { type: 'item', key: 'game-log' },
+         { type: 'item', key: 'player-list' },
++        { type: 'item', key: 'dances' },
+         { type: 'item', key: 'search' },
+         {
+             type: 'folder',
+diff --git a/src/localization/en.json b/src/localization/en.json
+index f3abaf55..42c46d5e 100644
+--- a/src/localization/en.json
++++ b/src/localization/en.json
+@@ -19,6 +19,7 @@
+             "configure": "Configure",
+             "refresh": "Refresh",
+             "cancel": "Cancel",
++            "close": "Close",
+             "copy": "Copy",
+             "open_link": "Open Link"
+         },
+@@ -49,6 +50,7 @@
+         "feed": "Feed",
+         "game_log": "Game Log",
+         "player_list": "Player List",
++        "dances": "Danced Users",
+         "search": "Search",
+         "favorites": "Favorites",
+         "favorite_friends": "Favorite Friends",
+@@ -304,6 +306,11 @@
+                 "status_tooltip": "VRCX Companion Status"
+             }
+         },
++        "dances": {
++            "search_placeholder": "Search danced users",
++            "note_placeholder": "Dance note",
++            "history": "Dance history"
++        },
+         "my_avatars": {
+             "filter": "Filter",
+             "clear_filters": "Clear All",
+@@ -1299,6 +1306,10 @@
+         "prompt": {
+             "input_invalid": "Invalid input"
+         },
++        "dances": {
++            "history_title": "Dance history: {name}",
++            "delete_event": "Delete dance"
++        },
+         "user": {
+             "status": {
+                 "active": "Active",
+@@ -1391,6 +1402,11 @@
+                 "join_count": "Join Count",
+                 "time_together": "Time Together",
+                 "play_time": "Play Time",
++                "dances": "Dances",
++                "dance_count": "Danced {count} times",
++                "last_danced_at": "Last: {date}",
++                "add_dance": "Add Dance",
++                "remove_dance": "Remove Dance",
+                 "online_for": "Online For",
+                 "offline_for": "Offline For",
+                 "last_activity": "Last Activity",
+@@ -2688,6 +2704,9 @@
+         "badge": {
+             "updated": "Badge updated"
+         },
++        "dances": {
++            "added": "Dance added"
++        },
+         "instance": {
+             "closed": "Instance closed",
+             "removed_form_queue": "Removed instance {worldName} from queue",
+@@ -2900,11 +2919,20 @@
+             "language": "Language",
+             "bioLink": "Bio Links",
+             "note": "Note",
++            "dances": "Dances",
+             "date": "Date",
+             "user": "User",
+             "type": "Type",
+             "detail": "Detail"
+         },
++        "dances": {
++            "date": "Date",
++            "user": "User",
++            "count": "Dances",
++            "lastDancedAt": "Last Dance",
++            "note": "Dance Note",
++            "action": "Action"
++        },
+         "friendLog": {
+             "date": "Date",
+             "type": "Type",
+diff --git a/src/localization/ru.json b/src/localization/ru.json
+index 7d1b4200..307d0ea9 100644
+--- a/src/localization/ru.json
++++ b/src/localization/ru.json
+@@ -5,6 +5,7 @@
+         "feed": "Лента",
+         "game_log": "Журнал игры",
+         "player_list": "Список игроков",
++        "dances": "Оттанцованные",
+         "search": "Поиск",
+         "favorites": "Избранное",
+         "friend_log": "Журнал друзей",
+@@ -89,6 +90,11 @@
+                 "status_tooltip": "Статус компаньона VRCX"
+             }
+         },
++        "dances": {
++            "search_placeholder": "Поиск оттанцованных пользователей",
++            "note_placeholder": "Заметка по танцу",
++            "history": "История танцев"
++        },
+         "search": {
+             "search_placeholder": "Поиск",
+             "clear_results_tooltip": "Очистить результаты поиска",
+@@ -539,6 +545,15 @@
+         }
+     },
+     "dialog": {
++        "alertdialog": {
++            "ok": "OK",
++            "cancel": "Отмена",
++            "confirm": "Подтвердить"
++        },
++        "dances": {
++            "history_title": "История танцев: {name}",
++            "delete_event": "Удалить танец"
++        },
+         "user": {
+             "status": {
+                 "active": "Активный",
+@@ -621,6 +636,11 @@
+                 "join_count": "Счетчик присоединений",
+                 "time_together": "Время вместе",
+                 "play_time": "Время игры",
++                "dances": "Танцы",
++                "dance_count": "Оттанцовано {count} раз",
++                "last_danced_at": "Последний: {date}",
++                "add_dance": "Добавить танец",
++                "remove_dance": "Убрать танец",
+                 "online_for": "В сети",
+                 "offline_for": "Не в сети",
+                 "last_activity": "Последняя активность",
+@@ -1657,6 +1677,9 @@
+         "badge": {
+             "updated": "Значок обновлен"
+         },
++        "dances": {
++            "added": "Танец добавлен"
++        },
+         "instance": {
+             "closed": "Инстанс закрыт",
+             "removed_form_queue": "Удален инстанс {worldName} из очереди",
+@@ -1711,11 +1734,20 @@
+             "language": "Язык",
+             "bioLink": "Био Ссылки",
+             "note": "Заметка",
++            "dances": "Танцы",
+             "date": "Дата",
+             "user": "Пользователь",
+             "type": "Тип",
+             "detail": "Подробная информация"
+         },
++        "dances": {
++            "date": "Дата",
++            "user": "Пользователь",
++            "count": "Танцы",
++            "lastDancedAt": "Последний танец",
++            "note": "Заметка по танцу",
++            "action": "Действие"
++        },
+         "friendLog": {
+             "date": "Дата",
+             "type": "Тип",
+diff --git a/src/plugins/router.js b/src/plugins/router.js
+index 9154c00f..aaad9cc6 100644
+--- a/src/plugins/router.js
++++ b/src/plugins/router.js
+@@ -10,6 +10,7 @@ import FriendList from './../views/FriendList/FriendList.vue';
+ import FriendLog from './../views/FriendLog/FriendLog.vue';
+ import FriendsLocations from './../views/FriendsLocations/FriendsLocations.vue';
+ import Dashboard from './../views/Dashboard/Dashboard.vue';
++import Dances from './../views/Dances/Dances.vue';
+ import Gallery from './../views/Tools/Gallery.vue';
+ import GameLog from './../views/GameLog/GameLog.vue';
+ import Login from './../views/Login/Login.vue';
+@@ -44,6 +45,7 @@ const routes = [
+             },
+             { path: 'game-log', name: 'game-log', component: GameLog },
+             { path: 'player-list', name: 'player-list', component: PlayerList },
++            { path: 'dances', name: 'dances', component: Dances },
+             { path: 'search', name: 'search', component: Search },
+             {
+                 path: 'dashboard/:id',
+diff --git a/src/services/database/__tests__/dances.test.js b/src/services/database/__tests__/dances.test.js
+new file mode 100644
+index 00000000..b5ead3c4
+--- /dev/null
++++ b/src/services/database/__tests__/dances.test.js
+@@ -0,0 +1,127 @@
++import { beforeEach, describe, expect, test, vi } from 'vitest';
++
++const mocks = vi.hoisted(() => ({
++    execute: vi.fn(),
++    executeNonQuery: vi.fn()
++}));
++
++vi.mock('../../sqlite.js', () => ({
++    default: {
++        execute: mocks.execute,
++        executeNonQuery: mocks.executeNonQuery
++    }
++}));
++
++vi.mock('../index.js', () => ({
++    dbVars: {
++        userPrefix: 'usrprefix'
++    }
++}));
++
++import { dances } from '../dances.js';
++
++describe('database/dances', () => {
++    beforeEach(() => {
++        mocks.execute.mockReset();
++        mocks.executeNonQuery.mockReset();
++    });
++
++    test('creates per-user dance tables and index', async () => {
++        await dances.initDanceTables();
++
++        expect(mocks.executeNonQuery).toHaveBeenCalledTimes(3);
++        expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
++            'CREATE TABLE IF NOT EXISTS usrprefix_dance_events'
++        );
++        expect(mocks.executeNonQuery.mock.calls[1][0]).toContain(
++            'CREATE INDEX IF NOT EXISTS usrprefix_dance_events_user_danced_idx'
++        );
++        expect(mocks.executeNonQuery.mock.calls[2][0]).toContain(
++            'CREATE TABLE IF NOT EXISTS usrprefix_dance_notes'
++        );
++    });
++
++    test('adds dance event with current user table placeholders', async () => {
++        await dances.addDanceEvent({
++            userId: 'usr_1',
++            displayName: 'Alice',
++            dancedAt: '2026-05-04T01:02:03.000Z'
++        });
++
++        expect(mocks.executeNonQuery).toHaveBeenCalledWith(
++            expect.stringContaining('INSERT INTO usrprefix_dance_events'),
++            {
++                '@user_id': 'usr_1',
++                '@display_name': 'Alice',
++                '@danced_at': '2026-05-04T01:02:03.000Z'
++            }
++        );
++    });
++
++    test('reads dance aggregates', async () => {
++        mocks.execute.mockImplementation(async (callback) => {
++            callback([
++                'usr_1',
++                'Alice',
++                2,
++                '2026-05-04T01:02:03.000Z',
++                'smooth',
++                '2026-05-04T02:00:00.000Z'
++            ]);
++        });
++
++        const rows = await dances.getDanceAggregates();
++
++        expect(rows).toEqual([
++            {
++                userId: 'usr_1',
++                displayName: 'Alice',
++                count: 2,
++                lastDancedAt: '2026-05-04T01:02:03.000Z',
++                note: 'smooth',
++                noteUpdatedAt: '2026-05-04T02:00:00.000Z'
++            }
++        ]);
++        expect(mocks.execute.mock.calls[0][1]).toContain(
++            'FROM usrprefix_dance_events'
++        );
++        expect(mocks.execute.mock.calls[0][1]).toContain(
++            'LEFT JOIN usrprefix_dance_notes'
++        );
++    });
++
++    test('saves and clears dance notes', async () => {
++        await dances.setDanceNote({
++            userId: 'usr_1',
++            note: 'great musicality',
++            updatedAt: '2026-05-04T02:00:00.000Z'
++        });
++        await dances.setDanceNote({
++            userId: 'usr_1',
++            note: '',
++            updatedAt: '2026-05-04T03:00:00.000Z'
++        });
++
++        expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
++            'INSERT OR REPLACE INTO usrprefix_dance_notes'
++        );
++        expect(mocks.executeNonQuery.mock.calls[0][1]).toMatchObject({
++            '@user_id': 'usr_1',
++            '@note': 'great musicality'
++        });
++        expect(mocks.executeNonQuery.mock.calls[1][0]).toContain(
++            'DELETE FROM usrprefix_dance_notes'
++        );
++    });
++
++    test('deletes selected dance event', async () => {
++        await dances.deleteDanceEvent(42);
++
++        expect(mocks.executeNonQuery).toHaveBeenCalledWith(
++            'DELETE FROM usrprefix_dance_events WHERE id = @id',
++            {
++                '@id': 42
++            }
++        );
++    });
++});
+diff --git a/src/services/database/dances.js b/src/services/database/dances.js
+new file mode 100644
+index 00000000..652166a9
+--- /dev/null
++++ b/src/services/database/dances.js
+@@ -0,0 +1,217 @@
++import { dbVars } from '../database';
++
++import sqliteService from '../sqlite.js';
++
++function getDanceEventsTable() {
++    return `${dbVars.userPrefix}_dance_events`;
++}
++
++function getDanceNotesTable() {
++    return `${dbVars.userPrefix}_dance_notes`;
++}
++
++function normalizeDanceAggregate(row) {
++    return {
++        userId: row[0] || '',
++        displayName: row[1] || '',
++        count: Number(row[2] || 0),
++        lastDancedAt: row[3] || '',
++        note: row[4] || '',
++        noteUpdatedAt: row[5] || ''
++    };
++}
++
++const dances = {
++    async initDanceTables() {
++        const eventsTable = getDanceEventsTable();
++        const notesTable = getDanceNotesTable();
++
++        await sqliteService.executeNonQuery(
++            `CREATE TABLE IF NOT EXISTS ${eventsTable} (
++                id INTEGER PRIMARY KEY,
++                user_id TEXT NOT NULL,
++                display_name TEXT,
++                danced_at TEXT NOT NULL
++            )`
++        );
++        await sqliteService.executeNonQuery(
++            `CREATE INDEX IF NOT EXISTS ${eventsTable}_user_danced_idx ON ${eventsTable} (user_id, danced_at)`
++        );
++        await sqliteService.executeNonQuery(
++            `CREATE TABLE IF NOT EXISTS ${notesTable} (
++                user_id TEXT PRIMARY KEY,
++                note TEXT,
++                updated_at TEXT
++            )`
++        );
++    },
++
++    async addDanceEvent(entry) {
++        await sqliteService.executeNonQuery(
++            `INSERT INTO ${getDanceEventsTable()} (user_id, display_name, danced_at)
++            VALUES (@user_id, @display_name, @danced_at)`,
++            {
++                '@user_id': entry.userId,
++                '@display_name': entry.displayName || '',
++                '@danced_at': entry.dancedAt
++            }
++        );
++    },
++
++    async getDanceAggregates() {
++        const rows = [];
++        const eventsTable = getDanceEventsTable();
++        const notesTable = getDanceNotesTable();
++
++        await sqliteService.execute(
++            (dbRow) => {
++                rows.push(normalizeDanceAggregate(dbRow));
++            },
++            `SELECT
++                e.user_id,
++                COALESCE(
++                    (
++                        SELECT e2.display_name
++                        FROM ${eventsTable} e2
++                        WHERE e2.user_id = e.user_id AND e2.display_name != ''
++                        ORDER BY e2.danced_at DESC, e2.id DESC
++                        LIMIT 1
++                    ),
++                    ''
++                ) AS display_name,
++                COUNT(e.id) AS dance_count,
++                MAX(e.danced_at) AS last_danced_at,
++                COALESCE(n.note, '') AS note,
++                COALESCE(n.updated_at, '') AS note_updated_at
++            FROM ${eventsTable} e
++            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
++            GROUP BY e.user_id
++            ORDER BY MAX(e.danced_at) DESC, display_name ASC`
++        );
++
++        return rows;
++    },
++
++    async getDanceAggregate(userId) {
++        let aggregate = null;
++        const eventsTable = getDanceEventsTable();
++        const notesTable = getDanceNotesTable();
++
++        await sqliteService.execute(
++            (dbRow) => {
++                aggregate = normalizeDanceAggregate(dbRow);
++            },
++            `SELECT
++                e.user_id,
++                COALESCE(
++                    (
++                        SELECT e2.display_name
++                        FROM ${eventsTable} e2
++                        WHERE e2.user_id = e.user_id AND e2.display_name != ''
++                        ORDER BY e2.danced_at DESC, e2.id DESC
++                        LIMIT 1
++                    ),
++                    ''
++                ) AS display_name,
++                COUNT(e.id) AS dance_count,
++                MAX(e.danced_at) AS last_danced_at,
++                COALESCE(n.note, '') AS note,
++                COALESCE(n.updated_at, '') AS note_updated_at
++            FROM ${eventsTable} e
++            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
++            WHERE e.user_id = @user_id
++            GROUP BY e.user_id`,
++            {
++                '@user_id': userId
++            }
++        );
++
++        if (aggregate) {
++            return aggregate;
++        }
++
++        await sqliteService.execute(
++            (dbRow) => {
++                aggregate = {
++                    userId,
++                    displayName: '',
++                    count: 0,
++                    lastDancedAt: '',
++                    note: dbRow[0] || '',
++                    noteUpdatedAt: dbRow[1] || ''
++                };
++            },
++            `SELECT note, updated_at FROM ${notesTable} WHERE user_id = @user_id`,
++            {
++                '@user_id': userId
++            }
++        );
++
++        return (
++            aggregate || {
++                userId,
++                displayName: '',
++                count: 0,
++                lastDancedAt: '',
++                note: '',
++                noteUpdatedAt: ''
++            }
++        );
++    },
++
++    async getDanceEvents(userId) {
++        const rows = [];
++        await sqliteService.execute(
++            (dbRow) => {
++                rows.push({
++                    id: dbRow[0],
++                    userId: dbRow[1],
++                    displayName: dbRow[2] || '',
++                    dancedAt: dbRow[3] || ''
++                });
++            },
++            `SELECT id, user_id, display_name, danced_at
++            FROM ${getDanceEventsTable()}
++            WHERE user_id = @user_id
++            ORDER BY danced_at DESC, id DESC`,
++            {
++                '@user_id': userId
++            }
++        );
++        return rows;
++    },
++
++    async deleteDanceEvent(id) {
++        await sqliteService.executeNonQuery(
++            `DELETE FROM ${getDanceEventsTable()} WHERE id = @id`,
++            {
++                '@id': id
++            }
++        );
++    },
++
++    async setDanceNote(entry) {
++        const note = String(entry.note || '');
++        if (!note) {
++            await sqliteService.executeNonQuery(
++                `DELETE FROM ${getDanceNotesTable()} WHERE user_id = @user_id`,
++                {
++                    '@user_id': entry.userId
++                }
++            );
++            return;
++        }
++
++        await sqliteService.executeNonQuery(
++            `INSERT OR REPLACE INTO ${getDanceNotesTable()} (user_id, note, updated_at)
++            VALUES (@user_id, @note, @updated_at)`,
++            {
++                '@user_id': entry.userId,
++                '@note': note,
++                '@updated_at': entry.updatedAt
++            }
++        );
++    }
++};
++
++export { dances };
+diff --git a/src/services/database/index.js b/src/services/database/index.js
+index b0b7c01f..5991cb79 100644
+--- a/src/services/database/index.js
++++ b/src/services/database/index.js
+@@ -1,6 +1,7 @@
+ import { activityV2 } from './activityV2.js';
+ import { avatarFavorites } from './avatarFavorites.js';
+ import { avatarTags } from './avatarTags.js';
++import { dances } from './dances.js';
+ import { feed } from './feed.js';
+ import { friendFavorites } from './friendFavorites.js';
+ import { friendLogCurrent } from './friendLogCurrent.js';
+@@ -35,6 +36,7 @@ const database = {
+     ...memos,
+     ...avatarFavorites,
+     ...avatarTags,
++    ...dances,
+     ...friendFavorites,
+     ...worldFavorites,
+     ...tableAlter,
+@@ -150,6 +152,7 @@ const database = {
+         await sqliteService.executeNonQuery(
+             `CREATE TABLE IF NOT EXISTS ${dbVars.userPrefix}_mutual_graph_meta (friend_id TEXT PRIMARY KEY, last_fetched_at TEXT, opted_out INTEGER DEFAULT 0)`
+         );
++        await this.initDanceTables();
+     },
+ 
+     async initTables() {
+diff --git a/src/shared/constants/ui.js b/src/shared/constants/ui.js
+index 48ff63fa..336f5422 100644
+--- a/src/shared/constants/ui.js
++++ b/src/shared/constants/ui.js
+@@ -29,6 +29,13 @@ const navDefinitions = [
+         labelKey: 'nav_tooltip.player_list',
+         routeName: 'player-list'
+     },
++    {
++        key: 'dances',
++        icon: 'ri-music-2-line',
++        tooltip: 'nav_tooltip.dances',
++        labelKey: 'nav_tooltip.dances',
++        routeName: 'dances'
++    },
+     {
+         key: 'search',
+         icon: 'ri-search-line',
+diff --git a/src/stores/dance.js b/src/stores/dance.js
+new file mode 100644
+index 00000000..9ddc086e
+--- /dev/null
++++ b/src/stores/dance.js
+@@ -0,0 +1,206 @@
++import { computed, ref } from 'vue';
++import { defineStore } from 'pinia';
++
++import { database } from '../services/database';
++import { watchState } from '../services/watchState';
++
++function createEmptyDanceAggregate(userId = '') {
++    return {
++        userId,
++        displayName: '',
++        count: 0,
++        lastDancedAt: '',
++        note: '',
++        noteUpdatedAt: ''
++    };
++}
++
++function normalizeUserRef(user) {
++    return {
++        userId: user?.id || user?.userId || '',
++        displayName: user?.displayName || user?.name || ''
++    };
++}
++
++export const useDanceStore = defineStore('Dance', () => {
++    const danceAggregates = ref([]);
++    const isDanceDataLoaded = ref(false);
++    const isDanceLoading = ref(false);
++    const danceHistoryDialog = ref({
++        visible: false,
++        loading: false,
++        userId: '',
++        displayName: '',
++        events: []
++    });
++
++    const danceAggregateByUserId = computed(() => {
++        const map = new Map();
++        for (const aggregate of danceAggregates.value) {
++            if (aggregate.userId) {
++                map.set(aggregate.userId, aggregate);
++            }
++        }
++        return map;
++    });
++
++    async function loadDanceAggregates({ force = false } = {}) {
++        if (!watchState.isLoggedIn) {
++            danceAggregates.value = [];
++            isDanceDataLoaded.value = false;
++            return [];
++        }
++        if (isDanceLoading.value) {
++            return danceAggregates.value;
++        }
++        if (isDanceDataLoaded.value && !force) {
++            return danceAggregates.value;
++        }
++
++        isDanceLoading.value = true;
++        try {
++            danceAggregates.value = await database.getDanceAggregates();
++            isDanceDataLoaded.value = true;
++        } finally {
++            isDanceLoading.value = false;
++        }
++        return danceAggregates.value;
++    }
++
++    function ensureDanceDataLoaded() {
++        return loadDanceAggregates();
++    }
++
++    function getDanceAggregate(userId) {
++        if (!userId) {
++            return createEmptyDanceAggregate();
++        }
++        return (
++            danceAggregateByUserId.value.get(userId) ||
++            createEmptyDanceAggregate(userId)
++        );
++    }
++
++    function getDanceCount(userId) {
++        return getDanceAggregate(userId).count;
++    }
++
++    function upsertDanceAggregate(aggregate) {
++        const index = danceAggregates.value.findIndex(
++            (item) => item.userId === aggregate.userId
++        );
++        if (!aggregate.count && !aggregate.note) {
++            if (index !== -1) {
++                danceAggregates.value.splice(index, 1);
++            }
++            return;
++        }
++        if (index === -1) {
++            danceAggregates.value.unshift(aggregate);
++        } else {
++            danceAggregates.value.splice(index, 1, aggregate);
++        }
++    }
++
++    async function refreshDanceAggregate(userId) {
++        if (!userId) {
++            return createEmptyDanceAggregate();
++        }
++        const aggregate = await database.getDanceAggregate(userId);
++        upsertDanceAggregate(aggregate);
++        return aggregate;
++    }
++
++    async function addDanceForUser(user) {
++        const { userId, displayName } = normalizeUserRef(user);
++        if (!userId) {
++            return createEmptyDanceAggregate();
++        }
++
++        await database.addDanceEvent({
++            userId,
++            displayName,
++            dancedAt: new Date().toJSON()
++        });
++        const aggregate = await refreshDanceAggregate(userId);
++        if (
++            danceHistoryDialog.value.visible &&
++            danceHistoryDialog.value.userId === userId
++        ) {
++            await loadDanceHistory(userId);
++        }
++        return aggregate;
++    }
++
++    async function saveDanceNote(userId, note) {
++        if (!userId) {
++            return createEmptyDanceAggregate();
++        }
++        await database.setDanceNote({
++            userId,
++            note,
++            updatedAt: new Date().toJSON()
++        });
++        return refreshDanceAggregate(userId);
++    }
++
++    async function loadDanceHistory(userId) {
++        if (!userId) {
++            danceHistoryDialog.value.events = [];
++            return [];
++        }
++        danceHistoryDialog.value.loading = true;
++        try {
++            danceHistoryDialog.value.events =
++                await database.getDanceEvents(userId);
++        } finally {
++            danceHistoryDialog.value.loading = false;
++        }
++        return danceHistoryDialog.value.events;
++    }
++
++    async function openDanceHistory(user) {
++        const { userId, displayName } = normalizeUserRef(user);
++        if (!userId) {
++            return;
++        }
++        danceHistoryDialog.value.userId = userId;
++        danceHistoryDialog.value.displayName = displayName || userId;
++        danceHistoryDialog.value.visible = true;
++        await loadDanceHistory(userId);
++    }
++
++    function closeDanceHistory() {
++        danceHistoryDialog.value.visible = false;
++    }
++
++    async function deleteDanceEvent(id) {
++        if (!id) {
++            return;
++        }
++        const userId = danceHistoryDialog.value.userId;
++        await database.deleteDanceEvent(id);
++        if (userId) {
++            await loadDanceHistory(userId);
++            await refreshDanceAggregate(userId);
++        }
++    }
++
++    return {
++        danceAggregates,
++        danceAggregateByUserId,
++        danceHistoryDialog,
++        isDanceDataLoaded,
++        isDanceLoading,
++        loadDanceAggregates,
++        ensureDanceDataLoaded,
++        getDanceAggregate,
++        getDanceCount,
++        refreshDanceAggregate,
++        addDanceForUser,
++        saveDanceNote,
++        openDanceHistory,
++        closeDanceHistory,
++        deleteDanceEvent
++    };
++});
+diff --git a/src/stores/index.js b/src/stores/index.js
+index d0cbcb03..eb7c8767 100644
+--- a/src/stores/index.js
++++ b/src/stores/index.js
+@@ -8,6 +8,7 @@ import { useAuthStore } from './auth';
+ import { useAvatarProviderStore } from './avatarProvider';
+ import { useAvatarStore } from './avatar';
+ import { useChartsStore } from './charts';
++import { useDanceStore } from './dance';
+ import { useDashboardStore } from './dashboard';
+ import { useDiscordPresenceSettingsStore } from './settings/discordPresence';
+ import { useFavoriteStore } from './favorite';
+@@ -160,6 +161,7 @@ export function createGlobalStores() {
+         auth: useAuthStore(),
+         vrcStatus: useVrcStatusStore(),
+         charts: useChartsStore(),
++        dance: useDanceStore(),
+         dashboard: useDashboardStore(),
+         modal: useModalStore(),
+         quickSearch: useQuickSearchStore()
+@@ -186,6 +188,7 @@ export {
+     usePhotonStore,
+     useSearchStore,
+     useChartsStore,
++    useDanceStore,
+     useDashboardStore,
+     useAdvancedSettingsStore,
+     useActivityStore,
+diff --git a/src/views/Dances/Dances.vue b/src/views/Dances/Dances.vue
+new file mode 100644
+index 00000000..445a1539
+--- /dev/null
++++ b/src/views/Dances/Dances.vue
+@@ -0,0 +1,167 @@
++<template>
++    <div class="x-container x-container--auto-height">
++        <div class="flex-1 min-h-0 flex flex-col">
++            <DataTableLayout
++                class="min-w-0 w-full"
++                :table="table"
++                :loading="isDanceLoading"
++                auto-height
++                :page-sizes="pageSizes"
++                :total-items="totalItems"
++                table-class="min-w-max w-max [&_tbody_tr]:cursor-pointer"
++                :on-page-size-change="handlePageSizeChange"
++                :on-row-click="handleRowClick">
++                <template #toolbar>
++                    <div class="mb-2 flex items-center justify-between gap-2">
++                        <InputGroupField
++                            v-model="danceSearch"
++                            :placeholder="t('view.dances.search_placeholder')"
++                            clearable
++                            class="w-[300px]"
++                            @input="scheduleDanceSearchChange"
++                            @change="applyDanceSearchChange" />
++                        <TooltipWrapper side="bottom" :content="t('common.actions.refresh')">
++                            <Button
++                                class="rounded-full"
++                                variant="ghost"
++                                size="icon-sm"
++                                :disabled="isDanceLoading"
++                                @click="refreshDances">
++                                <Spinner v-if="isDanceLoading" />
++                                <RefreshCw v-else />
++                            </Button>
++                        </TooltipWrapper>
++                    </div>
++                </template>
++            </DataTableLayout>
++        </div>
++    </div>
++</template>
++
++<script setup>
++    import { Button } from '@/components/ui/button';
++    import { DataTableLayout } from '@/components/ui/data-table';
++    import { InputGroupField } from '@/components/ui/input-group';
++    import { RefreshCw } from 'lucide-vue-next';
++    import { Spinner } from '@/components/ui/spinner';
++    import { TooltipWrapper } from '@/components/ui/tooltip';
++    import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from 'vue';
++    import { storeToRefs } from 'pinia';
++    import { useI18n } from 'vue-i18n';
++
++    import { createColumns } from './columns.jsx';
++    import { localeIncludes } from '../../shared/utils';
++    import { showUserDialog } from '../../coordinators/userCoordinator';
++    import { useAppearanceSettingsStore, useDanceStore, useSearchStore } from '../../stores';
++    import { useVrcxVueTable } from '../../lib/table/useVrcxVueTable';
++
++    const { t } = useI18n();
++    const appearanceSettingsStore = useAppearanceSettingsStore();
++    const danceStore = useDanceStore();
++    const { danceAggregates, isDanceLoading } = storeToRefs(danceStore);
++    const { stringComparer } = storeToRefs(useSearchStore());
++
++    const danceSearch = ref('');
++    const filteredDanceRows = ref([]);
++    const pageSizes = computed(() => appearanceSettingsStore.tablePageSizes);
++    const DANCE_SEARCH_DEBOUNCE_MS = 150;
++    let danceSearchTimer = 0;
++
++    const columns = computed(() =>
++        createColumns({
++            onSaveNote: saveDanceNote,
++            onShowHistory: danceStore.openDanceHistory
++        })
++    );
++
++    const { table, pagination } = useVrcxVueTable({
++        persistKey: 'dances',
++        get data() {
++            return filteredDanceRows.value;
++        },
++        columns,
++        getRowId: (row) => row?.userId ?? row?.displayName ?? '',
++        initialSorting: [{ id: 'lastDancedAt', desc: true }],
++        initialPagination: {
++            pageIndex: 0,
++            pageSize: appearanceSettingsStore.tablePageSize
++        }
++    });
++
++    const totalItems = computed(() => table.getFilteredRowModel().rows.length);
++
++    onMounted(async () => {
++        await refreshDances();
++    });
++
++    onActivated(async () => {
++        await refreshDances();
++    });
++
++    onBeforeUnmount(() => {
++        if (danceSearchTimer) {
++            clearTimeout(danceSearchTimer);
++        }
++    });
++
++    function handlePageSizeChange(size) {
++        pagination.value = {
++            ...pagination.value,
++            pageIndex: 0,
++            pageSize: size
++        };
++    }
++
++    async function refreshDances() {
++        await danceStore.loadDanceAggregates({ force: true });
++        applyDanceSearchChange();
++    }
++
++    function scheduleDanceSearchChange() {
++        if (danceSearchTimer) {
++            clearTimeout(danceSearchTimer);
++        }
++        danceSearchTimer = setTimeout(() => {
++            danceSearchTimer = 0;
++            applyDanceSearchChange();
++        }, DANCE_SEARCH_DEBOUNCE_MS);
++    }
++
++    function applyDanceSearchChange() {
++        if (danceSearchTimer) {
++            clearTimeout(danceSearchTimer);
++            danceSearchTimer = 0;
++        }
++        const query = danceSearch.value.trim();
++        const rows = danceAggregates.value.filter((row) => {
++            if (!row.count) {
++                return false;
++            }
++            if (!query) {
++                return true;
++            }
++            return (
++                localeIncludes(row.displayName || '', query, stringComparer.value) ||
++                localeIncludes(row.userId || '', query, stringComparer.value) ||
++                localeIncludes(row.note || '', query, stringComparer.value)
++            );
++        });
++        filteredDanceRows.value = rows;
++        table.setPageIndex(0);
++        nextTick(() => {
++            table.setSorting([{ id: 'lastDancedAt', desc: true }]);
++        });
++    }
++
++    async function saveDanceNote(userId, note) {
++        await danceStore.saveDanceNote(userId, note);
++        applyDanceSearchChange();
++    }
++
++    function handleRowClick(row) {
++        const userId = row?.original?.userId;
++        if (userId) {
++            showUserDialog(userId);
++        }
++    }
++</script>
+diff --git a/src/views/Dances/columns.jsx b/src/views/Dances/columns.jsx
+new file mode 100644
+index 00000000..92af8e1e
+--- /dev/null
++++ b/src/views/Dances/columns.jsx
+@@ -0,0 +1,142 @@
++import { ArrowUpDown, History } from 'lucide-vue-next';
++
++import { Button } from '../../components/ui/button';
++import { InputGroupField } from '../../components/ui/input-group';
++import { TooltipWrapper } from '../../components/ui/tooltip';
++import { formatDateFilter } from '../../shared/utils';
++import { i18n } from '../../plugins';
++
++const { t } = i18n.global;
++
++const sortButton = ({ column, label, descFirst = false }) => {
++    const resolvedLabel = typeof label === 'function' ? label() : label;
++    return (
++        <Button
++            variant="ghost"
++            size="sm"
++            class="-ml-2 h-8 px-2"
++            onClick={() => {
++                const sorted = column.getIsSorted();
++                if (!sorted && descFirst) {
++                    column.toggleSorting(true);
++                    return;
++                }
++                column.toggleSorting(sorted === 'asc');
++            }}
++        >
++            {resolvedLabel}
++            <ArrowUpDown class="ml-1 h-4 w-4" />
++        </Button>
++    );
++};
++
++const sortText = (a, b) =>
++    String(a || '')
++        .toLowerCase()
++        .localeCompare(String(b || '').toLowerCase());
++
++export const createColumns = ({ onSaveNote, onShowHistory }) => [
++    {
++        id: 'displayName',
++        accessorFn: (row) => row?.displayName,
++        header: ({ column }) =>
++            sortButton({
++                column,
++                label: () => t('table.dances.user')
++            }),
++        size: 220,
++        meta: {
++            label: () => t('table.dances.user')
++        },
++        sortingFn: (rowA, rowB) =>
++            sortText(rowA.original?.displayName, rowB.original?.displayName),
++        cell: ({ row }) => (
++            <span class="block min-w-0 truncate">
++                {row.original?.displayName || row.original?.userId || ''}
++            </span>
++        )
++    },
++    {
++        id: 'count',
++        accessorFn: (row) => row?.count,
++        header: ({ column }) =>
++            sortButton({
++                column,
++                label: () => t('table.dances.count'),
++                descFirst: true
++            }),
++        size: 130,
++        meta: {
++            class: 'text-right',
++            label: () => t('table.dances.count')
++        },
++        sortingFn: (rowA, rowB) =>
++            (rowA.original?.count ?? 0) - (rowB.original?.count ?? 0)
++    },
++    {
++        id: 'lastDancedAt',
++        accessorFn: (row) => row?.lastDancedAt,
++        header: ({ column }) =>
++            sortButton({
++                column,
++                label: () => t('table.dances.lastDancedAt'),
++                descFirst: true
++            }),
++        size: 190,
++        meta: {
++            label: () => t('table.dances.lastDancedAt')
++        },
++        sortingFn: (rowA, rowB) =>
++            sortText(rowA.original?.lastDancedAt, rowB.original?.lastDancedAt),
++        cell: ({ row }) => (
++            <span>{formatDateFilter(row.original?.lastDancedAt, 'long')}</span>
++        )
++    },
++    {
++        id: 'note',
++        accessorFn: (row) => row?.note,
++        header: () => t('table.dances.note'),
++        size: 260,
++        minSize: 160,
++        enableSorting: false,
++        meta: {
++            stretch: true,
++            label: () => t('table.dances.note')
++        },
++        cell: ({ row }) => (
++            <InputGroupField
++                modelValue={row.original?.note || ''}
++                placeholder={t('view.dances.note_placeholder')}
++                clearable
++                onClick={(event) => event.stopPropagation()}
++                onChange={(value) =>
++                    onSaveNote?.(row.original?.userId, String(value || ''))
++                }
++            />
++        )
++    },
++    {
++        id: 'action',
++        header: () => t('table.dances.action'),
++        size: 100,
++        enableSorting: false,
++        meta: {
++            class: 'text-right',
++            label: () => t('table.dances.action')
++        },
++        cell: ({ row }) => (
++            <TooltipWrapper side="top" content={t('view.dances.history')}>
++                <Button
++                    variant="ghost"
++                    size="icon-sm"
++                    onClick={(event) => {
++                        event.stopPropagation();
++                        onShowHistory?.(row.original);
++                    }}
++                >
++                    <History class="h-4 w-4" />
++                </Button>
++            </TooltipWrapper>
++        )
++    }
++];
+diff --git a/src/views/Layout/MainLayout.vue b/src/views/Layout/MainLayout.vue
+index 4f7cc4cc..ae325ebf 100644
+--- a/src/views/Layout/MainLayout.vue
++++ b/src/views/Layout/MainLayout.vue
+@@ -83,6 +83,8 @@
+ 
+         <SendBoopDialog></SendBoopDialog>
+ 
++        <DanceHistoryDialog></DanceHistoryDialog>
++
+         <GlobalToolsDialogs></GlobalToolsDialogs>
+ 
+         <ChangelogDialog></ChangelogDialog>
+@@ -107,6 +109,7 @@
+     import AvatarImportDialog from '../Favorites/dialogs/AvatarImportDialog.vue';
+     import ChangelogDialog from '../Settings/dialogs/ChangelogDialog.vue';
+     import ChooseFavoriteGroupDialog from '../../components/dialogs/ChooseFavoriteGroupDialog.vue';
++    import DanceHistoryDialog from '../../components/dialogs/DanceHistoryDialog.vue';
+     import FriendImportDialog from '../Favorites/dialogs/FriendImportDialog.vue';
+     import FullscreenImagePreview from '../../components/FullscreenImagePreview.vue';
+     import GlobalToolsDialogs from '../Tools/components/GlobalToolsDialogs.vue';
+diff --git a/src/views/Layout/__tests__/MainLayout.test.js b/src/views/Layout/__tests__/MainLayout.test.js
+index 5498a12d..c4af0363 100644
+--- a/src/views/Layout/__tests__/MainLayout.test.js
++++ b/src/views/Layout/__tests__/MainLayout.test.js
+@@ -97,6 +97,9 @@ vi.mock('../../Settings/dialogs/PrimaryPasswordDialog.vue', () => ({
+ vi.mock('../../../components/dialogs/SendBoopDialog.vue', () => ({
+     default: { template: '<div />' }
+ }));
++vi.mock('../../../components/dialogs/DanceHistoryDialog.vue', () => ({
++    default: { template: '<div />' }
++}));
+ vi.mock('../../Settings/dialogs/ChangelogDialog.vue', () => ({
+     default: { template: '<div />' }
+ }));
+diff --git a/src/views/PlayerList/PlayerList.vue b/src/views/PlayerList/PlayerList.vue
+index 94fbb20b..57d1ffe3 100644
+--- a/src/views/PlayerList/PlayerList.vue
++++ b/src/views/PlayerList/PlayerList.vue
+@@ -188,6 +188,7 @@
+ 
+     import {
+         useAppearanceSettingsStore,
++        useDanceStore,
+         useGalleryStore,
+         useInstanceStore,
+         useLocationStore,
+@@ -210,6 +211,8 @@
+ 
+     const { randomUserColours } = storeToRefs(useAppearanceSettingsStore());
+     const { userImage } = useUserDisplay();
++    const danceStore = useDanceStore();
++    const { danceAggregateByUserId } = storeToRefs(danceStore);
+     const photonStore = usePhotonStore();
+     const { photonLoggingEnabled, chatboxUserBlacklist } = storeToRefs(photonStore);
+     const { saveChatboxUserBlacklist } = photonStore;
+@@ -299,6 +302,7 @@
+         createColumns({
+             randomUserColours,
+             chatboxUserBlacklist,
++            danceAggregateByUserId,
+             onBlockChatbox: addChatboxUserBlacklist,
+             onUnblockChatbox: deleteChatboxUserBlacklist,
+             sortAlphabetically,
+@@ -339,17 +343,17 @@
+         { immediate: true }
+     );
+ 
+-    const playerListTotalItems = computed(() => playerListTable.getRowModel().rows.length);
+-
+     const handlePlayerListRowClick = (row) => {
+         selectCurrentInstanceRow(row?.original ?? null);
+     };
+ 
+     onMounted(() => {
++        danceStore.ensureDanceDataLoaded();
+         getCurrentInstanceUserList();
+     });
+ 
+     onActivated(() => {
++        danceStore.ensureDanceDataLoaded();
+         getCurrentInstanceUserList();
+     });
+ </script>
+diff --git a/src/views/PlayerList/__tests__/PlayerList.test.js b/src/views/PlayerList/__tests__/PlayerList.test.js
+index 9f6fb0a2..1b1e83cf 100644
+--- a/src/views/PlayerList/__tests__/PlayerList.test.js
++++ b/src/views/PlayerList/__tests__/PlayerList.test.js
+@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => ({
+     currentInstanceWorld: null,
+     currentInstanceUsersData: null,
+     currentUser: null,
++    danceAggregateByUserId: null,
++    ensureDanceDataLoaded: vi.fn(),
+     saveChatboxUserBlacklist: vi.fn(),
+     showUserDialog: vi.fn(),
+     lookupUser: vi.fn(),
+@@ -40,6 +42,10 @@ vi.mock('../../../stores', () => ({
+     useAppearanceSettingsStore: () => ({
+         randomUserColours: mocks.randomUserColours
+     }),
++    useDanceStore: () => ({
++        danceAggregateByUserId: mocks.danceAggregateByUserId,
++        ensureDanceDataLoaded: (...args) => mocks.ensureDanceDataLoaded(...args)
++    }),
+     usePhotonStore: () => ({
+         photonLoggingEnabled: mocks.photonLoggingEnabled,
+         chatboxUserBlacklist: mocks.chatboxUserBlacklist,
+@@ -200,7 +206,9 @@ describe('PlayerList.vue', () => {
+             id: 'usr_me',
+             $homeLocation: null
+         });
++        mocks.danceAggregateByUserId = ref(new Map());
+ 
++        mocks.ensureDanceDataLoaded.mockReset();
+         mocks.saveChatboxUserBlacklist.mockReset();
+         mocks.showUserDialog.mockReset();
+         mocks.lookupUser.mockReset();
+@@ -224,6 +232,7 @@ describe('PlayerList.vue', () => {
+         });
+ 
+         expect(mocks.getCurrentInstanceUserList).toHaveBeenCalledTimes(1);
++        expect(mocks.ensureDanceDataLoaded).toHaveBeenCalledTimes(1);
+         expect(mocks.tableSetOptions).toHaveBeenCalledTimes(1);
+         expect(mocks.photonColumnToggleVisibility).toHaveBeenCalledWith(false);
+     });
+diff --git a/src/views/PlayerList/__tests__/columns.test.js b/src/views/PlayerList/__tests__/columns.test.js
+index 2b25e302..434f0ca7 100644
+--- a/src/views/PlayerList/__tests__/columns.test.js
++++ b/src/views/PlayerList/__tests__/columns.test.js
+@@ -172,6 +172,32 @@ describe('views/PlayerList/columns.jsx', () => {
+         expect(iconCol.sortingFn(master, friend, 'icon')).toBeGreaterThan(0);
+     });
+ 
++    test('dances column sorts by injected dance aggregate count', () => {
++        const cols = createColumns({
++            randomUserColours: { value: false, __v_isRef: true },
++            chatboxUserBlacklist: { value: new Map(), __v_isRef: true },
++            danceAggregateByUserId: {
++                value: new Map([
++                    ['usr_1', { count: 3 }],
++                    ['usr_2', { count: 1 }]
++                ]),
++                __v_isRef: true
++            },
++            onBlockChatbox: mocks.onBlockChatbox,
++            onUnblockChatbox: mocks.onUnblockChatbox,
++            sortAlphabetically: mocks.sortAlphabetically
++        });
++        const dancesCol = cols.find((c) => c.id === 'dances');
++
++        const result = dancesCol.sortingFn(
++            { original: { ref: { id: 'usr_1' } } },
++            { original: { ref: { id: 'usr_2' } } }
++        );
++
++        expect(result).toBe(2);
++        expect(dancesCol.cell({ row: makeRow() }).children).toContain(3);
++    });
++
+     test('bioLink cell opens external link when favicon is clicked', () => {
+         const row = makeRow({
+             ref: {
+diff --git a/src/views/PlayerList/columns.jsx b/src/views/PlayerList/columns.jsx
+index 0dc16037..86b97b88 100644
+--- a/src/views/PlayerList/columns.jsx
++++ b/src/views/PlayerList/columns.jsx
+@@ -62,11 +62,15 @@ const sortInstanceIcon = (a, b) =>
+ export const createColumns = ({
+     randomUserColours,
+     chatboxUserBlacklist,
++    danceAggregateByUserId,
+     onBlockChatbox,
+     onUnblockChatbox,
+     sortAlphabetically,
+     userImage
+ }) => {
++    const getDanceCount = (userId) =>
++        danceAggregateByUserId?.value?.get?.(userId)?.count ?? 0;
++
+     const cols = [
+         {
+             id: 'avatar',
+@@ -251,7 +255,7 @@ export const createColumns = ({
+                 class: 'text-center',
+                 label: () => t('table.playerList.icon')
+             },
+-            sortingFn: (rowA, rowB, columnId) => {
++            sortingFn: (rowA, rowB) => {
+                 const a = rowA.original;
+                 const b = rowB.original;
+                 return -sortInstanceIcon(a, b);
+@@ -448,6 +452,28 @@ export const createColumns = ({
+                         : '';
+                 return <span>{text}</span>;
+             }
++        },
++        {
++            id: 'dances',
++            accessorFn: (row) => getDanceCount(row?.ref?.id),
++            header: ({ column }) =>
++                sortButton({
++                    column,
++                    label: () => t('table.playerList.dances'),
++                    descFirst: true
++                }),
++            size: 100,
++            meta: {
++                class: 'text-right',
++                label: () => t('table.playerList.dances')
++            },
++            sortingFn: (rowA, rowB) =>
++                getDanceCount(rowA.original?.ref?.id) -
++                getDanceCount(rowB.original?.ref?.id),
++            cell: ({ row }) => {
++                const count = getDanceCount(row.original?.ref?.id);
++                return count ? <span>{count}</span> : null;
++            }
+         }
+     ];
+ 

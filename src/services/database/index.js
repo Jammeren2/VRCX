@@ -1,6 +1,7 @@
 import { activityV2 } from './activityV2.js';
 import { avatarFavorites } from './avatarFavorites.js';
 import { avatarTags } from './avatarTags.js';
+import { dances } from './dances.js';
 import { feed } from './feed.js';
 import { friendFavorites } from './friendFavorites.js';
 import { friendLogCurrent } from './friendLogCurrent.js';
@@ -35,6 +36,7 @@ const database = {
     ...memos,
     ...avatarFavorites,
     ...avatarTags,
+    ...dances,
     ...friendFavorites,
     ...worldFavorites,
     ...tableAlter,
@@ -150,6 +152,7 @@ const database = {
         await sqliteService.executeNonQuery(
             `CREATE TABLE IF NOT EXISTS ${dbVars.userPrefix}_mutual_graph_meta (friend_id TEXT PRIMARY KEY, last_fetched_at TEXT, opted_out INTEGER DEFAULT 0)`
         );
+        await this.initDanceTables();
     },
 
     async initTables() {

@@ -19,6 +19,7 @@
             "configure": "Configure",
             "refresh": "Refresh",
             "cancel": "Cancel",
+            "close": "Close",
             "copy": "Copy",
             "open_link": "Open Link"
         },
@@ -49,6 +50,7 @@
         "feed": "Feed",
         "game_log": "Game Log",
         "player_list": "Player List",
+        "dances": "Danced Users",
         "search": "Search",
         "favorites": "Favorites",
         "favorite_friends": "Favorite Friends",
@@ -303,6 +305,11 @@
                 "chatbox_blacklist": "Chatbox Blacklist",
                 "status_tooltip": "VRCX Companion Status"
             }
+        },
+        "dances": {
+            "search_placeholder": "Search danced users",
+            "note_placeholder": "Dance note",
+            "history": "Dance history"
         },
         "my_avatars": {
             "filter": "Filter",
@@ -1299,6 +1306,10 @@
         "prompt": {
             "input_invalid": "Invalid input"
         },
+        "dances": {
+            "history_title": "Dance history: {name}",
+            "delete_event": "Delete dance"
+        },
         "user": {
             "status": {
                 "active": "Active",
@@ -1391,6 +1402,11 @@
                 "join_count": "Join Count",
                 "time_together": "Time Together",
                 "play_time": "Play Time",
+                "dances": "Dances",
+                "dance_count": "Danced {count} times",
+                "last_danced_at": "Last: {date}",
+                "add_dance": "Add Dance",
+                "remove_dance": "Remove Dance",
                 "online_for": "Online For",
                 "offline_for": "Offline For",
                 "last_activity": "Last Activity",
@@ -2688,6 +2704,9 @@
         "badge": {
             "updated": "Badge updated"
         },
+        "dances": {
+            "added": "Dance added"
+        },
         "instance": {
             "closed": "Instance closed",
             "removed_form_queue": "Removed instance {worldName} from queue",
@@ -2900,10 +2919,19 @@
             "language": "Language",
             "bioLink": "Bio Links",
             "note": "Note",
+            "dances": "Dances",
             "date": "Date",
             "user": "User",
             "type": "Type",
             "detail": "Detail"
+        },
+        "dances": {
+            "date": "Date",
+            "user": "User",
+            "count": "Dances",
+            "lastDancedAt": "Last Dance",
+            "note": "Dance Note",
+            "action": "Action"
         },
         "friendLog": {
             "date": "Date",

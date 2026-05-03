@@ -8,6 +8,7 @@ import { useAuthStore } from './auth';
 import { useAvatarProviderStore } from './avatarProvider';
 import { useAvatarStore } from './avatar';
 import { useChartsStore } from './charts';
+import { useDanceStore } from './dance';
 import { useDashboardStore } from './dashboard';
 import { useDiscordPresenceSettingsStore } from './settings/discordPresence';
 import { useFavoriteStore } from './favorite';
@@ -160,6 +161,7 @@ export function createGlobalStores() {
         auth: useAuthStore(),
         vrcStatus: useVrcStatusStore(),
         charts: useChartsStore(),
+        dance: useDanceStore(),
         dashboard: useDashboardStore(),
         modal: useModalStore(),
         quickSearch: useQuickSearchStore()
@@ -186,6 +188,7 @@ export {
     usePhotonStore,
     useSearchStore,
     useChartsStore,
+    useDanceStore,
     useDashboardStore,
     useAdvancedSettingsStore,
     useActivityStore,

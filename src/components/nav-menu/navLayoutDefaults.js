@@ -6,6 +6,7 @@ export function createBaseDefaultNavLayout(t) {
         { type: 'item', key: 'friends-locations' },
         { type: 'item', key: 'game-log' },
         { type: 'item', key: 'player-list' },
+        { type: 'item', key: 'dances' },
         { type: 'item', key: 'search' },
         {
             type: 'folder',
