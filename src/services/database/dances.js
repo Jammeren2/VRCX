@@ -22,8 +22,9 @@ function normalizeDanceAggregate(row) {
         lastDancedAt: row[3] || '',
         note: row[4] || '',
         noteUpdatedAt: row[5] || '',
-        lastClubId: row[6] || null,
-        lastClubName: row[7] || ''
+        lastDanceEventId: row[6] || null,
+        lastClubId: row[7] || null,
+        lastClubName: row[8] || ''
     };
 }
 
@@ -120,15 +121,22 @@ const dances = {
                 MAX(e.danced_at) AS last_danced_at,
                 COALESCE(n.note, '') AS note,
                 COALESCE(n.updated_at, '') AS note_updated_at,
+                (
+                    SELECT e3.id
+                    FROM ${eventsTable} e3
+                    WHERE e3.user_id = e.user_id
+                    ORDER BY e3.danced_at DESC, e3.id DESC
+                    LIMIT 1
+                ) AS last_dance_event_id,
                 lc.id AS last_club_id,
                 COALESCE(lc.name, '') AS last_club_name
             FROM ${eventsTable} e
             LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
             LEFT JOIN ${clubsTable} lc ON lc.id = (
-                SELECT e3.club_id
-                FROM ${eventsTable} e3
-                WHERE e3.user_id = e.user_id
-                ORDER BY e3.danced_at DESC, e3.id DESC
+                SELECT e4.club_id
+                FROM ${eventsTable} e4
+                WHERE e4.user_id = e.user_id
+                ORDER BY e4.danced_at DESC, e4.id DESC
                 LIMIT 1
             )
             GROUP BY e.user_id
@@ -164,15 +172,22 @@ const dances = {
                 MAX(e.danced_at) AS last_danced_at,
                 COALESCE(n.note, '') AS note,
                 COALESCE(n.updated_at, '') AS note_updated_at,
+                (
+                    SELECT e3.id
+                    FROM ${eventsTable} e3
+                    WHERE e3.user_id = e.user_id
+                    ORDER BY e3.danced_at DESC, e3.id DESC
+                    LIMIT 1
+                ) AS last_dance_event_id,
                 lc.id AS last_club_id,
                 COALESCE(lc.name, '') AS last_club_name
             FROM ${eventsTable} e
             LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
             LEFT JOIN ${clubsTable} lc ON lc.id = (
-                SELECT e3.club_id
-                FROM ${eventsTable} e3
-                WHERE e3.user_id = e.user_id
-                ORDER BY e3.danced_at DESC, e3.id DESC
+                SELECT e4.club_id
+                FROM ${eventsTable} e4
+                WHERE e4.user_id = e.user_id
+                ORDER BY e4.danced_at DESC, e4.id DESC
                 LIMIT 1
             )
             WHERE e.user_id = @user_id
@@ -195,6 +210,7 @@ const dances = {
                     lastDancedAt: '',
                     note: dbRow[0] || '',
                     noteUpdatedAt: dbRow[1] || '',
+                    lastDanceEventId: null,
                     lastClubId: null,
                     lastClubName: ''
                 };
@@ -213,6 +229,7 @@ const dances = {
                 lastDancedAt: '',
                 note: '',
                 noteUpdatedAt: '',
+                lastDanceEventId: null,
                 lastClubId: null,
                 lastClubName: ''
             }
@@ -249,6 +266,16 @@ const dances = {
             `DELETE FROM ${getDanceEventsTable()} WHERE id = @id`,
             {
                 '@id': id
+            }
+        );
+    },
+
+    async setDanceEventClub(id, clubId) {
+        await sqliteService.executeNonQuery(
+            `UPDATE ${getDanceEventsTable()} SET club_id = @club_id WHERE id = @id`,
+            {
+                '@id': id,
+                '@club_id': clubId || null
             }
         );
     },

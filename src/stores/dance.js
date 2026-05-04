@@ -12,6 +12,7 @@ function createEmptyDanceAggregate(userId = '') {
         lastDancedAt: '',
         note: '',
         noteUpdatedAt: '',
+        lastDanceEventId: null,
         lastClubId: null,
         lastClubName: ''
     };
@@ -194,6 +195,27 @@ export const useDanceStore = defineStore('Dance', () => {
         return refreshDanceAggregate(userId);
     }
 
+    async function saveDanceEventClub(eventId, clubId, userId = '') {
+        if (!eventId) {
+            return null;
+        }
+        await database.setDanceEventClub(eventId, clubId || null);
+        let aggregate = null;
+        if (userId) {
+            aggregate = await refreshDanceAggregate(userId);
+        } else {
+            await loadDanceAggregates({ force: true });
+        }
+        if (
+            danceHistoryDialog.value.visible &&
+            danceHistoryDialog.value.userId &&
+            (!userId || danceHistoryDialog.value.userId === userId)
+        ) {
+            await loadDanceHistory(danceHistoryDialog.value.userId);
+        }
+        return aggregate;
+    }
+
     async function loadDanceHistory(userId) {
         if (!userId) {
             danceHistoryDialog.value.events = [];
@@ -255,6 +277,7 @@ export const useDanceStore = defineStore('Dance', () => {
         addDanceClub,
         deleteDanceClub,
         saveDanceNote,
+        saveDanceEventClub,
         openDanceHistory,
         closeDanceHistory,
         deleteDanceEvent

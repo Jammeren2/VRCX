@@ -75,6 +75,7 @@ describe('database/dances', () => {
                 '2026-05-04T01:02:03.000Z',
                 'smooth',
                 '2026-05-04T02:00:00.000Z',
+                42,
                 7,
                 'Shelter'
             ]);
@@ -90,6 +91,7 @@ describe('database/dances', () => {
                 lastDancedAt: '2026-05-04T01:02:03.000Z',
                 note: 'smooth',
                 noteUpdatedAt: '2026-05-04T02:00:00.000Z',
+                lastDanceEventId: 42,
                 lastClubId: 7,
                 lastClubName: 'Shelter'
             }
@@ -196,6 +198,18 @@ describe('database/dances', () => {
             'DELETE FROM usrprefix_dance_events WHERE id = @id',
             {
                 '@id': 42
+            }
+        );
+    });
+
+    test('updates selected dance event club', async () => {
+        await dances.setDanceEventClub(42, null);
+
+        expect(mocks.executeNonQuery).toHaveBeenCalledWith(
+            'UPDATE usrprefix_dance_events SET club_id = @club_id WHERE id = @id',
+            {
+                '@id': 42,
+                '@club_id': null
             }
         );
     });

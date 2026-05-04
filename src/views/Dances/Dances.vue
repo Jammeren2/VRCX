@@ -68,7 +68,7 @@
     const { t } = useI18n();
     const appearanceSettingsStore = useAppearanceSettingsStore();
     const danceStore = useDanceStore();
-    const { danceAggregates, isDanceLoading } = storeToRefs(danceStore);
+    const { danceAggregates, danceClubs, isDanceLoading } = storeToRefs(danceStore);
     const { stringComparer } = storeToRefs(useSearchStore());
 
     const danceSearch = ref('');
@@ -80,7 +80,9 @@
 
     const columns = computed(() =>
         createColumns({
+            danceClubs,
             onSaveNote: saveDanceNote,
+            onSaveClub: saveDanceClub,
             onShowUser: showUserDialog,
             onShowHistory: danceStore.openDanceHistory
         })
@@ -125,7 +127,10 @@
     }
 
     async function refreshDances() {
-        await danceStore.loadDanceAggregates({ force: true });
+        await Promise.all([
+            danceStore.loadDanceAggregates({ force: true }),
+            danceStore.loadDanceClubs({ force: true })
+        ]);
         applyDanceSearchChange();
     }
 
@@ -168,6 +173,11 @@
 
     async function saveDanceNote(userId, note) {
         await danceStore.saveDanceNote(userId, note);
+        applyDanceSearchChange();
+    }
+
+    async function saveDanceClub(row, clubId) {
+        await danceStore.saveDanceEventClub(row?.lastDanceEventId, clubId, row?.userId);
         applyDanceSearchChange();
     }
 </script>

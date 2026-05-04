@@ -2,6 +2,10 @@ import { ArrowUpDown, History } from 'lucide-vue-next';
 
 import { Button } from '../../components/ui/button';
 import { InputGroupField } from '../../components/ui/input-group';
+import {
+    NativeSelect,
+    NativeSelectOption
+} from '../../components/ui/native-select';
 import { TooltipWrapper } from '../../components/ui/tooltip';
 import { formatDateFilter } from '../../shared/utils';
 import { i18n } from '../../plugins';
@@ -35,7 +39,13 @@ const sortText = (a, b) =>
         .toLowerCase()
         .localeCompare(String(b || '').toLowerCase());
 
-export const createColumns = ({ onSaveNote, onShowUser, onShowHistory }) => [
+export const createColumns = ({
+    danceClubs,
+    onSaveNote,
+    onSaveClub,
+    onShowUser,
+    onShowHistory
+}) => [
     {
         id: 'displayName',
         accessorFn: (row) => row?.displayName,
@@ -120,10 +130,27 @@ export const createColumns = ({ onSaveNote, onShowUser, onShowHistory }) => [
         sortingFn: (rowA, rowB) =>
             sortText(rowA.original?.lastClubName, rowB.original?.lastClubName),
         cell: ({ row }) => (
-            <span class="block min-w-0 truncate">
-                {row.original?.lastClubName ||
-                    t('dialog.user.info.dance_club_none')}
-            </span>
+            <NativeSelect
+                modelValue={
+                    row.original?.lastClubId
+                        ? String(row.original.lastClubId)
+                        : ''
+                }
+                class="h-8 w-44"
+                onClick={(event) => event.stopPropagation()}
+                onUpdate:modelValue={(value) => {
+                    onSaveClub?.(row.original, value ? Number(value) : null);
+                }}
+            >
+                <NativeSelectOption value="">
+                    {t('dialog.user.info.dance_club_none')}
+                </NativeSelectOption>
+                {(danceClubs?.value || []).map((club) => (
+                    <NativeSelectOption key={club.id} value={String(club.id)}>
+                        {club.name}
+                    </NativeSelectOption>
+                ))}
+            </NativeSelect>
         )
     },
     {

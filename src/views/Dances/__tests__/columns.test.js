@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, test, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
     formatDateFilter: vi.fn((value) => `formatted:${value}`),
     onSaveNote: vi.fn(),
+    onSaveClub: vi.fn(),
     onShowUser: vi.fn(),
     onShowHistory: vi.fn()
 }));
@@ -25,6 +26,11 @@ vi.mock('../../../components/ui/button', () => ({
 
 vi.mock('../../../components/ui/input-group', () => ({
     InputGroupField: 'InputGroupField'
+}));
+
+vi.mock('../../../components/ui/native-select', () => ({
+    NativeSelect: 'NativeSelect',
+    NativeSelectOption: 'NativeSelectOption'
 }));
 
 vi.mock('../../../components/ui/tooltip', () => ({
@@ -62,7 +68,16 @@ function findNode(node, predicate) {
 
 function makeColumns() {
     return createColumns({
+        danceClubs: {
+            value: [
+                {
+                    id: 7,
+                    name: 'Shelter'
+                }
+            ]
+        },
         onSaveNote: mocks.onSaveNote,
+        onSaveClub: mocks.onSaveClub,
         onShowUser: mocks.onShowUser,
         onShowHistory: mocks.onShowHistory
     });
@@ -73,6 +88,7 @@ describe('views/Dances/columns.jsx', () => {
         globalThis.React = { createElement };
         mocks.formatDateFilter.mockClear();
         mocks.onSaveNote.mockReset();
+        mocks.onSaveClub.mockReset();
         mocks.onShowUser.mockReset();
         mocks.onShowHistory.mockReset();
     });
@@ -133,5 +149,28 @@ describe('views/Dances/columns.jsx', () => {
             row.original.lastDancedAt,
             'long'
         );
+    });
+
+    test('club cell changes the latest dance event club without opening profile', () => {
+        const row = {
+            original: {
+                userId: 'usr_1',
+                lastDanceEventId: 42,
+                lastClubId: null,
+                lastClubName: ''
+            }
+        };
+        const clubCol = makeColumns().find(
+            (column) => column.id === 'lastClubName'
+        );
+        const clubCell = clubCol.cell({ row });
+        const stopPropagation = vi.fn();
+
+        clubCell.props.onClick({ stopPropagation });
+        clubCell.props['onUpdate:modelValue']('7');
+
+        expect(stopPropagation).toHaveBeenCalledTimes(1);
+        expect(mocks.onSaveClub).toHaveBeenCalledWith(row.original, 7);
+        expect(mocks.onShowUser).not.toHaveBeenCalled();
     });
 });

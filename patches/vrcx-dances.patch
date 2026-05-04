@@ -889,10 +889,10 @@ index 9154c00f..aaad9cc6 100644
                  path: 'dashboard/:id',
 diff --git a/src/services/database/__tests__/dances.test.js b/src/services/database/__tests__/dances.test.js
 new file mode 100644
-index 00000000..239e71b3
+index 00000000..be7b40ad
 --- /dev/null
 +++ b/src/services/database/__tests__/dances.test.js
-@@ -0,0 +1,202 @@
+@@ -0,0 +1,216 @@
 +import { beforeEach, describe, expect, test, vi } from 'vitest';
 +
 +const mocks = vi.hoisted(() => ({
@@ -970,6 +970,7 @@ index 00000000..239e71b3
 +                '2026-05-04T01:02:03.000Z',
 +                'smooth',
 +                '2026-05-04T02:00:00.000Z',
++                42,
 +                7,
 +                'Shelter'
 +            ]);
@@ -985,6 +986,7 @@ index 00000000..239e71b3
 +                lastDancedAt: '2026-05-04T01:02:03.000Z',
 +                note: 'smooth',
 +                noteUpdatedAt: '2026-05-04T02:00:00.000Z',
++                lastDanceEventId: 42,
 +                lastClubId: 7,
 +                lastClubName: 'Shelter'
 +            }
@@ -1094,13 +1096,25 @@ index 00000000..239e71b3
 +            }
 +        );
 +    });
++
++    test('updates selected dance event club', async () => {
++        await dances.setDanceEventClub(42, null);
++
++        expect(mocks.executeNonQuery).toHaveBeenCalledWith(
++            'UPDATE usrprefix_dance_events SET club_id = @club_id WHERE id = @id',
++            {
++                '@id': 42,
++                '@club_id': null
++            }
++        );
++    });
 +});
 diff --git a/src/services/database/dances.js b/src/services/database/dances.js
 new file mode 100644
-index 00000000..ba0f571d
+index 00000000..7ea3f2b5
 --- /dev/null
 +++ b/src/services/database/dances.js
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,361 @@
 +import { dbVars } from '../database';
 +
 +import sqliteService from '../sqlite.js';
@@ -1125,8 +1139,9 @@ index 00000000..ba0f571d
 +        lastDancedAt: row[3] || '',
 +        note: row[4] || '',
 +        noteUpdatedAt: row[5] || '',
-+        lastClubId: row[6] || null,
-+        lastClubName: row[7] || ''
++        lastDanceEventId: row[6] || null,
++        lastClubId: row[7] || null,
++        lastClubName: row[8] || ''
 +    };
 +}
 +
@@ -1223,15 +1238,22 @@ index 00000000..ba0f571d
 +                MAX(e.danced_at) AS last_danced_at,
 +                COALESCE(n.note, '') AS note,
 +                COALESCE(n.updated_at, '') AS note_updated_at,
++                (
++                    SELECT e3.id
++                    FROM ${eventsTable} e3
++                    WHERE e3.user_id = e.user_id
++                    ORDER BY e3.danced_at DESC, e3.id DESC
++                    LIMIT 1
++                ) AS last_dance_event_id,
 +                lc.id AS last_club_id,
 +                COALESCE(lc.name, '') AS last_club_name
 +            FROM ${eventsTable} e
 +            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
 +            LEFT JOIN ${clubsTable} lc ON lc.id = (
-+                SELECT e3.club_id
-+                FROM ${eventsTable} e3
-+                WHERE e3.user_id = e.user_id
-+                ORDER BY e3.danced_at DESC, e3.id DESC
++                SELECT e4.club_id
++                FROM ${eventsTable} e4
++                WHERE e4.user_id = e.user_id
++                ORDER BY e4.danced_at DESC, e4.id DESC
 +                LIMIT 1
 +            )
 +            GROUP BY e.user_id
@@ -1267,15 +1289,22 @@ index 00000000..ba0f571d
 +                MAX(e.danced_at) AS last_danced_at,
 +                COALESCE(n.note, '') AS note,
 +                COALESCE(n.updated_at, '') AS note_updated_at,
++                (
++                    SELECT e3.id
++                    FROM ${eventsTable} e3
++                    WHERE e3.user_id = e.user_id
++                    ORDER BY e3.danced_at DESC, e3.id DESC
++                    LIMIT 1
++                ) AS last_dance_event_id,
 +                lc.id AS last_club_id,
 +                COALESCE(lc.name, '') AS last_club_name
 +            FROM ${eventsTable} e
 +            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
 +            LEFT JOIN ${clubsTable} lc ON lc.id = (
-+                SELECT e3.club_id
-+                FROM ${eventsTable} e3
-+                WHERE e3.user_id = e.user_id
-+                ORDER BY e3.danced_at DESC, e3.id DESC
++                SELECT e4.club_id
++                FROM ${eventsTable} e4
++                WHERE e4.user_id = e.user_id
++                ORDER BY e4.danced_at DESC, e4.id DESC
 +                LIMIT 1
 +            )
 +            WHERE e.user_id = @user_id
@@ -1298,6 +1327,7 @@ index 00000000..ba0f571d
 +                    lastDancedAt: '',
 +                    note: dbRow[0] || '',
 +                    noteUpdatedAt: dbRow[1] || '',
++                    lastDanceEventId: null,
 +                    lastClubId: null,
 +                    lastClubName: ''
 +                };
@@ -1316,6 +1346,7 @@ index 00000000..ba0f571d
 +                lastDancedAt: '',
 +                note: '',
 +                noteUpdatedAt: '',
++                lastDanceEventId: null,
 +                lastClubId: null,
 +                lastClubName: ''
 +            }
@@ -1352,6 +1383,16 @@ index 00000000..ba0f571d
 +            `DELETE FROM ${getDanceEventsTable()} WHERE id = @id`,
 +            {
 +                '@id': id
++            }
++        );
++    },
++
++    async setDanceEventClub(id, clubId) {
++        await sqliteService.executeNonQuery(
++            `UPDATE ${getDanceEventsTable()} SET club_id = @club_id WHERE id = @id`,
++            {
++                '@id': id,
++                '@club_id': clubId || null
 +            }
 +        );
 +    },
@@ -1483,10 +1524,10 @@ index 48ff63fa..336f5422 100644
          icon: 'ri-search-line',
 diff --git a/src/stores/dance.js b/src/stores/dance.js
 new file mode 100644
-index 00000000..91b503aa
+index 00000000..0aeace86
 --- /dev/null
 +++ b/src/stores/dance.js
-@@ -0,0 +1,262 @@
+@@ -0,0 +1,285 @@
 +import { computed, ref } from 'vue';
 +import { defineStore } from 'pinia';
 +
@@ -1501,6 +1542,7 @@ index 00000000..91b503aa
 +        lastDancedAt: '',
 +        note: '',
 +        noteUpdatedAt: '',
++        lastDanceEventId: null,
 +        lastClubId: null,
 +        lastClubName: ''
 +    };
@@ -1683,6 +1725,27 @@ index 00000000..91b503aa
 +        return refreshDanceAggregate(userId);
 +    }
 +
++    async function saveDanceEventClub(eventId, clubId, userId = '') {
++        if (!eventId) {
++            return null;
++        }
++        await database.setDanceEventClub(eventId, clubId || null);
++        let aggregate = null;
++        if (userId) {
++            aggregate = await refreshDanceAggregate(userId);
++        } else {
++            await loadDanceAggregates({ force: true });
++        }
++        if (
++            danceHistoryDialog.value.visible &&
++            danceHistoryDialog.value.userId &&
++            (!userId || danceHistoryDialog.value.userId === userId)
++        ) {
++            await loadDanceHistory(danceHistoryDialog.value.userId);
++        }
++        return aggregate;
++    }
++
 +    async function loadDanceHistory(userId) {
 +        if (!userId) {
 +            danceHistoryDialog.value.events = [];
@@ -1744,6 +1807,7 @@ index 00000000..91b503aa
 +        addDanceClub,
 +        deleteDanceClub,
 +        saveDanceNote,
++        saveDanceEventClub,
 +        openDanceHistory,
 +        closeDanceHistory,
 +        deleteDanceEvent
@@ -1897,10 +1961,10 @@ index 00000000..5a49e1a8
 +</script>
 diff --git a/src/views/Dances/Dances.vue b/src/views/Dances/Dances.vue
 new file mode 100644
-index 00000000..5556d462
+index 00000000..165970cc
 --- /dev/null
 +++ b/src/views/Dances/Dances.vue
-@@ -0,0 +1,173 @@
+@@ -0,0 +1,183 @@
 +<template>
 +    <div class="x-container x-container--auto-height">
 +        <div class="flex-1 min-h-0 flex flex-col">
@@ -1971,7 +2035,7 @@ index 00000000..5556d462
 +    const { t } = useI18n();
 +    const appearanceSettingsStore = useAppearanceSettingsStore();
 +    const danceStore = useDanceStore();
-+    const { danceAggregates, isDanceLoading } = storeToRefs(danceStore);
++    const { danceAggregates, danceClubs, isDanceLoading } = storeToRefs(danceStore);
 +    const { stringComparer } = storeToRefs(useSearchStore());
 +
 +    const danceSearch = ref('');
@@ -1983,7 +2047,9 @@ index 00000000..5556d462
 +
 +    const columns = computed(() =>
 +        createColumns({
++            danceClubs,
 +            onSaveNote: saveDanceNote,
++            onSaveClub: saveDanceClub,
 +            onShowUser: showUserDialog,
 +            onShowHistory: danceStore.openDanceHistory
 +        })
@@ -2028,7 +2094,10 @@ index 00000000..5556d462
 +    }
 +
 +    async function refreshDances() {
-+        await danceStore.loadDanceAggregates({ force: true });
++        await Promise.all([
++            danceStore.loadDanceAggregates({ force: true }),
++            danceStore.loadDanceClubs({ force: true })
++        ]);
 +        applyDanceSearchChange();
 +    }
 +
@@ -2073,18 +2142,24 @@ index 00000000..5556d462
 +        await danceStore.saveDanceNote(userId, note);
 +        applyDanceSearchChange();
 +    }
++
++    async function saveDanceClub(row, clubId) {
++        await danceStore.saveDanceEventClub(row?.lastDanceEventId, clubId, row?.userId);
++        applyDanceSearchChange();
++    }
 +</script>
 diff --git a/src/views/Dances/__tests__/columns.test.js b/src/views/Dances/__tests__/columns.test.js
 new file mode 100644
-index 00000000..b6663cae
+index 00000000..ca4ace04
 --- /dev/null
 +++ b/src/views/Dances/__tests__/columns.test.js
-@@ -0,0 +1,137 @@
+@@ -0,0 +1,176 @@
 +import { beforeEach, describe, expect, test, vi } from 'vitest';
 +
 +const mocks = vi.hoisted(() => ({
 +    formatDateFilter: vi.fn((value) => `formatted:${value}`),
 +    onSaveNote: vi.fn(),
++    onSaveClub: vi.fn(),
 +    onShowUser: vi.fn(),
 +    onShowHistory: vi.fn()
 +}));
@@ -2107,6 +2182,11 @@ index 00000000..b6663cae
 +
 +vi.mock('../../../components/ui/input-group', () => ({
 +    InputGroupField: 'InputGroupField'
++}));
++
++vi.mock('../../../components/ui/native-select', () => ({
++    NativeSelect: 'NativeSelect',
++    NativeSelectOption: 'NativeSelectOption'
 +}));
 +
 +vi.mock('../../../components/ui/tooltip', () => ({
@@ -2144,7 +2224,16 @@ index 00000000..b6663cae
 +
 +function makeColumns() {
 +    return createColumns({
++        danceClubs: {
++            value: [
++                {
++                    id: 7,
++                    name: 'Shelter'
++                }
++            ]
++        },
 +        onSaveNote: mocks.onSaveNote,
++        onSaveClub: mocks.onSaveClub,
 +        onShowUser: mocks.onShowUser,
 +        onShowHistory: mocks.onShowHistory
 +    });
@@ -2155,6 +2244,7 @@ index 00000000..b6663cae
 +        globalThis.React = { createElement };
 +        mocks.formatDateFilter.mockClear();
 +        mocks.onSaveNote.mockReset();
++        mocks.onSaveClub.mockReset();
 +        mocks.onShowUser.mockReset();
 +        mocks.onShowHistory.mockReset();
 +    });
@@ -2216,17 +2306,44 @@ index 00000000..b6663cae
 +            'long'
 +        );
 +    });
++
++    test('club cell changes the latest dance event club without opening profile', () => {
++        const row = {
++            original: {
++                userId: 'usr_1',
++                lastDanceEventId: 42,
++                lastClubId: null,
++                lastClubName: ''
++            }
++        };
++        const clubCol = makeColumns().find(
++            (column) => column.id === 'lastClubName'
++        );
++        const clubCell = clubCol.cell({ row });
++        const stopPropagation = vi.fn();
++
++        clubCell.props.onClick({ stopPropagation });
++        clubCell.props['onUpdate:modelValue']('7');
++
++        expect(stopPropagation).toHaveBeenCalledTimes(1);
++        expect(mocks.onSaveClub).toHaveBeenCalledWith(row.original, 7);
++        expect(mocks.onShowUser).not.toHaveBeenCalled();
++    });
 +});
 diff --git a/src/views/Dances/columns.jsx b/src/views/Dances/columns.jsx
 new file mode 100644
-index 00000000..65382f88
+index 00000000..2e343410
 --- /dev/null
 +++ b/src/views/Dances/columns.jsx
-@@ -0,0 +1,176 @@
+@@ -0,0 +1,203 @@
 +import { ArrowUpDown, History } from 'lucide-vue-next';
 +
 +import { Button } from '../../components/ui/button';
 +import { InputGroupField } from '../../components/ui/input-group';
++import {
++    NativeSelect,
++    NativeSelectOption
++} from '../../components/ui/native-select';
 +import { TooltipWrapper } from '../../components/ui/tooltip';
 +import { formatDateFilter } from '../../shared/utils';
 +import { i18n } from '../../plugins';
@@ -2260,7 +2377,13 @@ index 00000000..65382f88
 +        .toLowerCase()
 +        .localeCompare(String(b || '').toLowerCase());
 +
-+export const createColumns = ({ onSaveNote, onShowUser, onShowHistory }) => [
++export const createColumns = ({
++    danceClubs,
++    onSaveNote,
++    onSaveClub,
++    onShowUser,
++    onShowHistory
++}) => [
 +    {
 +        id: 'displayName',
 +        accessorFn: (row) => row?.displayName,
@@ -2345,10 +2468,27 @@ index 00000000..65382f88
 +        sortingFn: (rowA, rowB) =>
 +            sortText(rowA.original?.lastClubName, rowB.original?.lastClubName),
 +        cell: ({ row }) => (
-+            <span class="block min-w-0 truncate">
-+                {row.original?.lastClubName ||
-+                    t('dialog.user.info.dance_club_none')}
-+            </span>
++            <NativeSelect
++                modelValue={
++                    row.original?.lastClubId
++                        ? String(row.original.lastClubId)
++                        : ''
++                }
++                class="h-8 w-44"
++                onClick={(event) => event.stopPropagation()}
++                onUpdate:modelValue={(value) => {
++                    onSaveClub?.(row.original, value ? Number(value) : null);
++                }}
++            >
++                <NativeSelectOption value="">
++                    {t('dialog.user.info.dance_club_none')}
++                </NativeSelectOption>
++                {(danceClubs?.value || []).map((club) => (
++                    <NativeSelectOption key={club.id} value={String(club.id)}>
++                        {club.name}
++                    </NativeSelectOption>
++                ))}
++            </NativeSelect>
 +        )
 +    },
 +    {
