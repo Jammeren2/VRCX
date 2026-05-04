@@ -1,13 +1,15 @@
 diff --git a/README-DANCES.md b/README-DANCES.md
 new file mode 100644
-index 00000000..69add28a
+index 00000000..d183bad3
 --- /dev/null
 +++ b/README-DANCES.md
-@@ -0,0 +1,64 @@
+@@ -0,0 +1,66 @@
 +# VRCX: патч "Оттанцованные"
 +
 +Этот fork/patch добавляет локальную вкладку "Оттанцованные" в VRCX. Данные
 +хранятся в локальной SQLite-базе VRCX и привязаны к текущему аккаунту VRCX.
++Также поддерживаются локальные клубы танцев: их можно добавлять в VRCX и
++выбирать при записи танца, либо оставить клуб пустым.
 +
 +## Сборка
 +
@@ -70,10 +72,10 @@ index 00000000..69add28a
 +пользователя, layout-диалог и таблица "Список игроков".
 diff --git a/src/components/dialogs/DanceHistoryDialog.vue b/src/components/dialogs/DanceHistoryDialog.vue
 new file mode 100644
-index 00000000..0cb6376e
+index 00000000..da93b126
 --- /dev/null
 +++ b/src/components/dialogs/DanceHistoryDialog.vue
-@@ -0,0 +1,89 @@
+@@ -0,0 +1,95 @@
 +<template>
 +    <Dialog :open="danceHistoryDialog.visible" @update:open="handleOpenChange">
 +        <DialogContent class="x-dialog sm:max-w-150 translate-y-0" style="top: 10vh">
@@ -105,6 +107,9 @@ index 00000000..0cb6376e
 +                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
 +                                {{ t('table.dances.user') }}
 +                            </th>
++                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
++                                {{ t('table.dances.club') }}
++                            </th>
 +                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-right font-medium">
 +                                {{ t('table.dances.action') }}
 +                            </th>
@@ -115,6 +120,9 @@ index 00000000..0cb6376e
 +                            <td class="px-3 py-2">{{ formatDateFilter(event.dancedAt, 'long') }}</td>
 +                            <td class="truncate px-3 py-2">
 +                                {{ event.displayName || danceHistoryDialog.displayName }}
++                            </td>
++                            <td class="truncate px-3 py-2">
++                                {{ event.clubName || t('dialog.user.info.dance_club_none') }}
 +                            </td>
 +                            <td class="px-3 py-2 text-right">
 +                                <TooltipWrapper side="top" :content="t('dialog.dances.delete_event')">
@@ -165,10 +173,10 @@ index 00000000..0cb6376e
 +</script>
 diff --git a/src/components/dialogs/UserDialog/UserDancePanel.vue b/src/components/dialogs/UserDialog/UserDancePanel.vue
 new file mode 100644
-index 00000000..cd9a9bac
+index 00000000..c1730878
 --- /dev/null
 +++ b/src/components/dialogs/UserDialog/UserDancePanel.vue
-@@ -0,0 +1,99 @@
+@@ -0,0 +1,199 @@
 +<template>
 +    <div
 +        v-if="currentUser.id !== userDialog.id"
@@ -217,6 +225,13 @@ index 00000000..cd9a9bac
 +                        })
 +                    }}
 +                </span>
++                <span v-if="danceAggregate.lastClubName" class="ml-2 text-muted-foreground">
++                    {{
++                        t('dialog.user.info.last_dance_club', {
++                            club: danceAggregate.lastClubName
++                        })
++                    }}
++                </span>
 +            </div>
 +            <pre
 +                v-if="danceAggregate.note"
@@ -226,10 +241,63 @@ index 00000000..cd9a9bac
 +            >
 +        </div>
 +    </div>
++
++    <Dialog :open="isDanceEntryDialogVisible" @update:open="handleDanceEntryDialogOpenChange">
++        <DialogContent class="sm:max-w-sm">
++            <DialogHeader>
++                <DialogTitle>{{ t('dialog.user.info.dance_entry_title') }}</DialogTitle>
++            </DialogHeader>
++            <div class="space-y-3 text-xs">
++                <div>
++                    {{
++                        t('dialog.user.info.dance_entry_description', {
++                            name: danceEntryDisplayName
++                        })
++                    }}
++                </div>
++                <label class="block">
++                    <span class="mb-1 block text-muted-foreground">
++                        {{ t('dialog.user.info.dance_club') }}
++                    </span>
++                    <NativeSelect v-model="danceEntryClubId" data-testid="dance-club-select" class="w-full">
++                        <NativeSelectOption value="">
++                            {{ t('dialog.user.info.dance_club_none') }}
++                        </NativeSelectOption>
++                        <NativeSelectOption v-for="club in danceClubs" :key="club.id" :value="String(club.id)">
++                            {{ club.name }}
++                        </NativeSelectOption>
++                    </NativeSelect>
++                </label>
++                <label class="block">
++                    <span class="mb-1 block text-muted-foreground">
++                        {{ t('dialog.user.info.dance_note') }}
++                    </span>
++                    <InputGroupTextareaField
++                        v-model="danceEntryNote"
++                        data-testid="dance-note-input"
++                        :rows="3"
++                        input-class="resize-none"
++                        :placeholder="t('dialog.user.info.dance_note_placeholder')"
++                        clearable />
++                </label>
++            </div>
++            <DialogFooter>
++                <Button variant="secondary" class="mr-2" @click="closeDanceEntryDialog">
++                    {{ t('dialog.alertdialog.cancel') }}
++                </Button>
++                <Button data-testid="apply-dance-note" :disabled="isSaving" @click="applyDanceEntry">
++                    {{ t('dialog.user.info.apply_dance_entry') }}
++                </Button>
++            </DialogFooter>
++        </DialogContent>
++    </Dialog>
 +</template>
 +
 +<script setup>
 +    import { Button } from '@/components/ui/button';
++    import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
++    import { InputGroupTextareaField } from '@/components/ui/input-group';
++    import { NativeSelect, NativeSelectOption } from '@/components/ui/native-select';
 +    import { ListMinus, Plus } from 'lucide-vue-next';
 +    import { computed, onMounted, ref } from 'vue';
 +    import { storeToRefs } from 'pinia';
@@ -242,22 +310,62 @@ index 00000000..cd9a9bac
 +
 +    const { t } = useI18n();
 +    const danceStore = useDanceStore();
++    const { danceClubs } = storeToRefs(danceStore);
 +    const { userDialog, currentUser } = storeToRefs(useUserStore());
 +    const isSaving = ref(false);
++    const isDanceEntryDialogVisible = ref(false);
++    const danceEntryNote = ref('');
++    const danceEntryClubId = ref('');
++    const danceEntryUserId = ref('');
++    const danceEntryDisplayName = ref('');
 +
 +    const danceAggregate = computed(() => danceStore.getDanceAggregate(userDialog.value.id));
 +
 +    onMounted(() => {
 +        danceStore.ensureDanceDataLoaded();
++        danceStore.ensureDanceClubsLoaded();
 +    });
 +
-+    async function addDance() {
++    function addDance() {
 +        if (isSaving.value) {
++            return;
++        }
++        openDanceEntryDialog();
++    }
++
++    function openDanceEntryDialog() {
++        const aggregate = danceAggregate.value;
++        const user = userDialog.value.ref || {};
++        danceEntryUserId.value = user.id || aggregate.userId || userDialog.value.id;
++        danceEntryDisplayName.value = user.displayName || aggregate.displayName || danceEntryUserId.value;
++        danceEntryNote.value = aggregate.note || '';
++        danceEntryClubId.value = aggregate.lastClubId ? String(aggregate.lastClubId) : '';
++        isDanceEntryDialogVisible.value = true;
++    }
++
++    function handleDanceEntryDialogOpenChange(open) {
++        if (!open) {
++            closeDanceEntryDialog();
++            return;
++        }
++        isDanceEntryDialogVisible.value = true;
++    }
++
++    function closeDanceEntryDialog() {
++        isDanceEntryDialogVisible.value = false;
++    }
++
++    async function applyDanceEntry() {
++        if (isSaving.value || !danceEntryUserId.value) {
 +            return;
 +        }
 +        isSaving.value = true;
 +        try {
-+            await danceStore.addDanceForUser(userDialog.value.ref);
++            await danceStore.addDanceForUser(userDialog.value.ref, {
++                clubId: danceEntryClubId.value ? Number(danceEntryClubId.value) : null
++            });
++            await danceStore.saveDanceNote(danceEntryUserId.value, danceEntryNote.value);
++            closeDanceEntryDialog();
 +            toast.success(t('message.dances.added'));
 +        } finally {
 +            isSaving.value = false;
@@ -290,20 +398,23 @@ index 8d6b6aed..8359c757 100644
  
 diff --git a/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js b/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js
 new file mode 100644
-index 00000000..facdc8e0
+index 00000000..9e27efc7
 --- /dev/null
 +++ b/src/components/dialogs/UserDialog/__tests__/UserDancePanel.test.js
-@@ -0,0 +1,148 @@
+@@ -0,0 +1,248 @@
 +import { beforeEach, describe, expect, test, vi } from 'vitest';
-+import { mount } from '@vue/test-utils';
++import { flushPromises, mount } from '@vue/test-utils';
 +import { nextTick, ref } from 'vue';
 +
 +const mocks = vi.hoisted(() => ({
 +    currentUser: null,
 +    userDialog: null,
 +    aggregate: null,
++    danceClubs: null,
 +    ensureDanceDataLoaded: vi.fn(),
++    ensureDanceClubsLoaded: vi.fn(),
 +    addDanceForUser: vi.fn(),
++    saveDanceNote: vi.fn(),
 +    openDanceHistory: vi.fn(),
 +    toastSuccess: vi.fn()
 +}));
@@ -345,6 +456,39 @@ index 00000000..facdc8e0
 +    }
 +}));
 +
++vi.mock('@/components/ui/dialog', () => ({
++    Dialog: {
++        props: ['open'],
++        emits: ['update:open'],
++        template: '<div v-if="open"><slot /></div>'
++    },
++    DialogContent: { template: '<div><slot /></div>' },
++    DialogFooter: { template: '<div><slot /></div>' },
++    DialogHeader: { template: '<div><slot /></div>' },
++    DialogTitle: { template: '<div><slot /></div>' }
++}));
++
++vi.mock('@/components/ui/input-group', () => ({
++    InputGroupTextareaField: {
++        props: ['modelValue'],
++        emits: ['update:modelValue'],
++        template:
++            '<textarea v-bind="$attrs" :value="modelValue" @input="$emit(\'update:modelValue\', $event.target.value)"></textarea>'
++    }
++}));
++
++vi.mock('@/components/ui/native-select', () => ({
++    NativeSelect: {
++        props: ['modelValue'],
++        emits: ['update:modelValue'],
++        template:
++            '<select v-bind="$attrs" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><slot /></select>'
++    },
++    NativeSelectOption: {
++        template: '<option><slot /></option>'
++    }
++}));
++
 +vi.mock('../../../ui/tooltip', () => ({
 +    TooltipWrapper: { template: '<div><slot /></div>' }
 +}));
@@ -364,9 +508,13 @@ index 00000000..facdc8e0
 +        userDialog: mocks.userDialog
 +    }),
 +    useDanceStore: () => ({
++        danceClubs: mocks.danceClubs,
 +        ensureDanceDataLoaded: (...args) =>
 +            mocks.ensureDanceDataLoaded(...args),
++        ensureDanceClubsLoaded: (...args) =>
++            mocks.ensureDanceClubsLoaded(...args),
 +        addDanceForUser: (...args) => mocks.addDanceForUser(...args),
++        saveDanceNote: (...args) => mocks.saveDanceNote(...args),
 +        openDanceHistory: (...args) => mocks.openDanceHistory(...args),
 +        getDanceAggregate: () => mocks.aggregate.value
 +    })
@@ -389,24 +537,37 @@ index 00000000..facdc8e0
 +            displayName: 'Alice',
 +            count: 2,
 +            lastDancedAt: '2026-05-04T01:02:03.000Z',
-+            note: 'great musicality'
++            note: 'great musicality',
++            lastClubId: 7,
++            lastClubName: 'Shelter'
 +        });
++        mocks.danceClubs = ref([
++            {
++                id: 7,
++                name: 'Shelter'
++            }
++        ]);
 +
 +        mocks.ensureDanceDataLoaded.mockReset();
++        mocks.ensureDanceClubsLoaded.mockReset();
 +        mocks.addDanceForUser.mockReset();
++        mocks.saveDanceNote.mockReset();
 +        mocks.openDanceHistory.mockReset();
 +        mocks.toastSuccess.mockReset();
 +        mocks.addDanceForUser.mockResolvedValue(mocks.aggregate.value);
++        mocks.saveDanceNote.mockResolvedValue(mocks.aggregate.value);
 +    });
 +
 +    test('loads dance data and shows aggregate for another user', () => {
 +        const wrapper = mount(UserDancePanel);
 +
 +        expect(mocks.ensureDanceDataLoaded).toHaveBeenCalledTimes(1);
++        expect(mocks.ensureDanceClubsLoaded).toHaveBeenCalledTimes(1);
 +        expect(wrapper.text()).toContain('Danced 2 times');
 +        expect(wrapper.text()).toContain(
 +            'Last: formatted:2026-05-04T01:02:03.000Z'
 +        );
++        expect(wrapper.text()).toContain('dialog.user.info.last_dance_club');
 +        expect(wrapper.text()).toContain('great musicality');
 +    });
 +
@@ -420,16 +581,63 @@ index 00000000..facdc8e0
 +        );
 +    });
 +
-+    test('add button records a dance for the dialog user', async () => {
++    test('add button opens the dance entry dialog', async () => {
 +        const wrapper = mount(UserDancePanel);
 +
 +        await wrapper.get('[data-testid="add-dance"]').trigger('click');
++        await flushPromises();
 +        await nextTick();
 +
++        expect(mocks.addDanceForUser).not.toHaveBeenCalled();
++        expect(wrapper.text()).toContain('dialog.user.info.dance_entry_title');
++    });
++
++    test('apply button records a dance with the selected club and note', async () => {
++        const wrapper = mount(UserDancePanel);
++
++        await wrapper.get('[data-testid="add-dance"]').trigger('click');
++        await flushPromises();
++        await wrapper.get('[data-testid="dance-club-select"]').setValue('7');
++        await wrapper
++            .get('[data-testid="dance-note-input"]')
++            .setValue('new dance note');
++        await wrapper.get('[data-testid="apply-dance-note"]').trigger('click');
++        await flushPromises();
++
 +        expect(mocks.addDanceForUser).toHaveBeenCalledWith(
-+            mocks.userDialog.value.ref
++            mocks.userDialog.value.ref,
++            {
++                clubId: 7
++            }
++        );
++        expect(mocks.saveDanceNote).toHaveBeenCalledWith(
++            'usr_1',
++            'new dance note'
 +        );
 +        expect(mocks.toastSuccess).toHaveBeenCalledWith('message.dances.added');
++    });
++
++    test('apply button allows an empty club and note', async () => {
++        mocks.aggregate.value.note = '';
++        mocks.addDanceForUser.mockResolvedValue({
++            ...mocks.aggregate.value,
++            note: ''
++        });
++        const wrapper = mount(UserDancePanel);
++
++        await wrapper.get('[data-testid="add-dance"]').trigger('click');
++        await flushPromises();
++        await wrapper.get('[data-testid="dance-club-select"]').setValue('');
++        await wrapper.get('[data-testid="apply-dance-note"]').trigger('click');
++        await flushPromises();
++
++        expect(mocks.addDanceForUser).toHaveBeenCalledWith(
++            mocks.userDialog.value.ref,
++            {
++                clubId: null
++            }
++        );
++        expect(mocks.saveDanceNote).toHaveBeenCalledWith('usr_1', '');
 +    });
 +
 +    test('remove button opens dance history', async () => {
@@ -455,7 +663,7 @@ index a755faa8..3c8a2f74 100644
          {
              type: 'folder',
 diff --git a/src/localization/en.json b/src/localization/en.json
-index f3abaf55..42c46d5e 100644
+index f3abaf55..6510acec 100644
 --- a/src/localization/en.json
 +++ b/src/localization/en.json
 @@ -19,6 +19,7 @@
@@ -474,52 +682,69 @@ index f3abaf55..42c46d5e 100644
          "search": "Search",
          "favorites": "Favorites",
          "favorite_friends": "Favorite Friends",
-@@ -304,6 +306,11 @@
+@@ -304,6 +306,12 @@
                  "status_tooltip": "VRCX Companion Status"
              }
          },
 +        "dances": {
 +            "search_placeholder": "Search danced users",
 +            "note_placeholder": "Dance note",
-+            "history": "Dance history"
++            "history": "Dance history",
++            "manage_clubs": "Manage dance clubs"
 +        },
          "my_avatars": {
              "filter": "Filter",
              "clear_filters": "Clear All",
-@@ -1299,6 +1306,10 @@
+@@ -1299,6 +1307,14 @@
          "prompt": {
              "input_invalid": "Invalid input"
          },
 +        "dances": {
 +            "history_title": "Dance history: {name}",
-+            "delete_event": "Delete dance"
++            "delete_event": "Delete dance",
++            "clubs_title": "Dance Clubs",
++            "club_name_placeholder": "Club name",
++            "add_club": "Add",
++            "delete_club": "Delete club"
 +        },
          "user": {
              "status": {
                  "active": "Active",
-@@ -1391,6 +1402,11 @@
+@@ -1391,6 +1407,22 @@
                  "join_count": "Join Count",
                  "time_together": "Time Together",
                  "play_time": "Play Time",
 +                "dances": "Dances",
 +                "dance_count": "Danced {count} times",
 +                "last_danced_at": "Last: {date}",
++                "last_dance_club": "Club: {club}",
 +                "add_dance": "Add Dance",
 +                "remove_dance": "Remove Dance",
++                "dance_entry_title": "Add Dance",
++                "dance_entry_description": "Choose a club and add a note for {name}. Both can be empty.",
++                "dance_club": "Club",
++                "dance_club_none": "None",
++                "dance_note": "Dance Note",
++                "dance_note_title": "Dance Note",
++                "dance_note_description": "Add a note for {name}. Empty note is allowed.",
++                "dance_note_placeholder": "Note about the dance",
++                "apply_dance_note": "Apply",
++                "apply_dance_entry": "Apply",
                  "online_for": "Online For",
                  "offline_for": "Offline For",
                  "last_activity": "Last Activity",
-@@ -2688,6 +2704,9 @@
+@@ -2688,6 +2720,10 @@
          "badge": {
              "updated": "Badge updated"
          },
 +        "dances": {
-+            "added": "Dance added"
++            "added": "Dance added",
++            "note_saved": "Dance note saved"
 +        },
          "instance": {
              "closed": "Instance closed",
              "removed_form_queue": "Removed instance {worldName} from queue",
-@@ -2900,11 +2919,20 @@
+@@ -2900,11 +2936,21 @@
              "language": "Language",
              "bioLink": "Bio Links",
              "note": "Note",
@@ -534,6 +759,7 @@ index f3abaf55..42c46d5e 100644
 +            "user": "User",
 +            "count": "Dances",
 +            "lastDancedAt": "Last Dance",
++            "club": "Club",
 +            "note": "Dance Note",
 +            "action": "Action"
 +        },
@@ -541,7 +767,7 @@ index f3abaf55..42c46d5e 100644
              "date": "Date",
              "type": "Type",
 diff --git a/src/localization/ru.json b/src/localization/ru.json
-index 7d1b4200..307d0ea9 100644
+index 7d1b4200..8b382a82 100644
 --- a/src/localization/ru.json
 +++ b/src/localization/ru.json
 @@ -5,6 +5,7 @@
@@ -552,19 +778,20 @@ index 7d1b4200..307d0ea9 100644
          "search": "Поиск",
          "favorites": "Избранное",
          "friend_log": "Журнал друзей",
-@@ -89,6 +90,11 @@
+@@ -89,6 +90,12 @@
                  "status_tooltip": "Статус компаньона VRCX"
              }
          },
 +        "dances": {
 +            "search_placeholder": "Поиск оттанцованных пользователей",
 +            "note_placeholder": "Заметка по танцу",
-+            "history": "История танцев"
++            "history": "История танцев",
++            "manage_clubs": "Управление клубами"
 +        },
          "search": {
              "search_placeholder": "Поиск",
              "clear_results_tooltip": "Очистить результаты поиска",
-@@ -539,6 +545,15 @@
+@@ -539,6 +546,19 @@
          }
      },
      "dialog": {
@@ -575,34 +802,50 @@ index 7d1b4200..307d0ea9 100644
 +        },
 +        "dances": {
 +            "history_title": "История танцев: {name}",
-+            "delete_event": "Удалить танец"
++            "delete_event": "Удалить танец",
++            "clubs_title": "Клубы для танцев",
++            "club_name_placeholder": "Название клуба",
++            "add_club": "Добавить",
++            "delete_club": "Удалить клуб"
 +        },
          "user": {
              "status": {
                  "active": "Активный",
-@@ -621,6 +636,11 @@
+@@ -621,6 +641,22 @@
                  "join_count": "Счетчик присоединений",
                  "time_together": "Время вместе",
                  "play_time": "Время игры",
 +                "dances": "Танцы",
 +                "dance_count": "Оттанцовано {count} раз",
 +                "last_danced_at": "Последний: {date}",
++                "last_dance_club": "Клуб: {club}",
 +                "add_dance": "Добавить танец",
 +                "remove_dance": "Убрать танец",
++                "dance_entry_title": "Добавить танец",
++                "dance_entry_description": "Выберите клуб и добавьте заметку для {name}. Оба поля можно оставить пустыми.",
++                "dance_club": "Клуб",
++                "dance_club_none": "Нет",
++                "dance_note": "Заметка по танцу",
++                "dance_note_title": "Заметка по танцу",
++                "dance_note_description": "Добавьте заметку для {name}. Можно оставить пустой.",
++                "dance_note_placeholder": "Заметка по танцу",
++                "apply_dance_note": "Применить",
++                "apply_dance_entry": "Применить",
                  "online_for": "В сети",
                  "offline_for": "Не в сети",
                  "last_activity": "Последняя активность",
-@@ -1657,6 +1677,9 @@
+@@ -1657,6 +1693,10 @@
          "badge": {
              "updated": "Значок обновлен"
          },
 +        "dances": {
-+            "added": "Танец добавлен"
++            "added": "Танец добавлен",
++            "note_saved": "Заметка по танцу сохранена"
 +        },
          "instance": {
              "closed": "Инстанс закрыт",
              "removed_form_queue": "Удален инстанс {worldName} из очереди",
-@@ -1711,11 +1734,20 @@
+@@ -1711,11 +1751,21 @@
              "language": "Язык",
              "bioLink": "Био Ссылки",
              "note": "Заметка",
@@ -617,6 +860,7 @@ index 7d1b4200..307d0ea9 100644
 +            "user": "Пользователь",
 +            "count": "Танцы",
 +            "lastDancedAt": "Последний танец",
++            "club": "Клуб",
 +            "note": "Заметка по танцу",
 +            "action": "Действие"
 +        },
@@ -645,10 +889,10 @@ index 9154c00f..aaad9cc6 100644
                  path: 'dashboard/:id',
 diff --git a/src/services/database/__tests__/dances.test.js b/src/services/database/__tests__/dances.test.js
 new file mode 100644
-index 00000000..b5ead3c4
+index 00000000..239e71b3
 --- /dev/null
 +++ b/src/services/database/__tests__/dances.test.js
-@@ -0,0 +1,127 @@
+@@ -0,0 +1,202 @@
 +import { beforeEach, describe, expect, test, vi } from 'vitest';
 +
 +const mocks = vi.hoisted(() => ({
@@ -680,14 +924,20 @@ index 00000000..b5ead3c4
 +    test('creates per-user dance tables and index', async () => {
 +        await dances.initDanceTables();
 +
-+        expect(mocks.executeNonQuery).toHaveBeenCalledTimes(3);
++        expect(mocks.executeNonQuery).toHaveBeenCalledTimes(5);
 +        expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
 +            'CREATE TABLE IF NOT EXISTS usrprefix_dance_events'
 +        );
 +        expect(mocks.executeNonQuery.mock.calls[1][0]).toContain(
-+            'CREATE INDEX IF NOT EXISTS usrprefix_dance_events_user_danced_idx'
++            'ALTER TABLE usrprefix_dance_events ADD club_id'
 +        );
 +        expect(mocks.executeNonQuery.mock.calls[2][0]).toContain(
++            'CREATE INDEX IF NOT EXISTS usrprefix_dance_events_user_danced_idx'
++        );
++        expect(mocks.executeNonQuery.mock.calls[3][0]).toContain(
++            'CREATE TABLE IF NOT EXISTS usrprefix_dance_clubs'
++        );
++        expect(mocks.executeNonQuery.mock.calls[4][0]).toContain(
 +            'CREATE TABLE IF NOT EXISTS usrprefix_dance_notes'
 +        );
 +    });
@@ -696,7 +946,8 @@ index 00000000..b5ead3c4
 +        await dances.addDanceEvent({
 +            userId: 'usr_1',
 +            displayName: 'Alice',
-+            dancedAt: '2026-05-04T01:02:03.000Z'
++            dancedAt: '2026-05-04T01:02:03.000Z',
++            clubId: 7
 +        });
 +
 +        expect(mocks.executeNonQuery).toHaveBeenCalledWith(
@@ -704,7 +955,8 @@ index 00000000..b5ead3c4
 +            {
 +                '@user_id': 'usr_1',
 +                '@display_name': 'Alice',
-+                '@danced_at': '2026-05-04T01:02:03.000Z'
++                '@danced_at': '2026-05-04T01:02:03.000Z',
++                '@club_id': 7
 +            }
 +        );
 +    });
@@ -717,7 +969,9 @@ index 00000000..b5ead3c4
 +                2,
 +                '2026-05-04T01:02:03.000Z',
 +                'smooth',
-+                '2026-05-04T02:00:00.000Z'
++                '2026-05-04T02:00:00.000Z',
++                7,
++                'Shelter'
 +            ]);
 +        });
 +
@@ -730,7 +984,9 @@ index 00000000..b5ead3c4
 +                count: 2,
 +                lastDancedAt: '2026-05-04T01:02:03.000Z',
 +                note: 'smooth',
-+                noteUpdatedAt: '2026-05-04T02:00:00.000Z'
++                noteUpdatedAt: '2026-05-04T02:00:00.000Z',
++                lastClubId: 7,
++                lastClubName: 'Shelter'
 +            }
 +        ]);
 +        expect(mocks.execute.mock.calls[0][1]).toContain(
@@ -739,6 +995,69 @@ index 00000000..b5ead3c4
 +        expect(mocks.execute.mock.calls[0][1]).toContain(
 +            'LEFT JOIN usrprefix_dance_notes'
 +        );
++    });
++
++    test('manages dance clubs', async () => {
++        mocks.execute.mockImplementation(async (callback) => {
++            callback([
++                7,
++                'Shelter',
++                '2026-05-04T01:00:00.000Z',
++                '2026-05-04T01:00:00.000Z'
++            ]);
++        });
++
++        const club = await dances.addDanceClub({
++            name: 'Shelter',
++            createdAt: '2026-05-04T01:00:00.000Z',
++            updatedAt: '2026-05-04T01:00:00.000Z'
++        });
++
++        expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
++            'INSERT OR IGNORE INTO usrprefix_dance_clubs'
++        );
++        expect(club).toEqual({
++            id: 7,
++            name: 'Shelter',
++            createdAt: '2026-05-04T01:00:00.000Z',
++            updatedAt: '2026-05-04T01:00:00.000Z'
++        });
++
++        mocks.execute.mockReset();
++        mocks.execute.mockImplementation(async (callback) => {
++            callback([
++                7,
++                'Shelter',
++                '2026-05-04T01:00:00.000Z',
++                '2026-05-04T01:00:00.000Z'
++            ]);
++        });
++
++        await expect(dances.getDanceClubs()).resolves.toEqual([
++            {
++                id: 7,
++                name: 'Shelter',
++                createdAt: '2026-05-04T01:00:00.000Z',
++                updatedAt: '2026-05-04T01:00:00.000Z'
++            }
++        ]);
++    });
++
++    test('deleting a club clears references before removing it', async () => {
++        await dances.deleteDanceClub(7);
++
++        expect(mocks.executeNonQuery.mock.calls[0]).toEqual([
++            'UPDATE usrprefix_dance_events SET club_id = NULL WHERE club_id = @id',
++            {
++                '@id': 7
++            }
++        ]);
++        expect(mocks.executeNonQuery.mock.calls[1]).toEqual([
++            'DELETE FROM usrprefix_dance_clubs WHERE id = @id',
++            {
++                '@id': 7
++            }
++        ]);
 +    });
 +
 +    test('saves and clears dance notes', async () => {
@@ -778,10 +1097,10 @@ index 00000000..b5ead3c4
 +});
 diff --git a/src/services/database/dances.js b/src/services/database/dances.js
 new file mode 100644
-index 00000000..652166a9
+index 00000000..ba0f571d
 --- /dev/null
 +++ b/src/services/database/dances.js
-@@ -0,0 +1,217 @@
+@@ -0,0 +1,334 @@
 +import { dbVars } from '../database';
 +
 +import sqliteService from '../sqlite.js';
@@ -794,6 +1113,10 @@ index 00000000..652166a9
 +    return `${dbVars.userPrefix}_dance_notes`;
 +}
 +
++function getDanceClubsTable() {
++    return `${dbVars.userPrefix}_dance_clubs`;
++}
++
 +function normalizeDanceAggregate(row) {
 +    return {
 +        userId: row[0] || '',
@@ -801,7 +1124,18 @@ index 00000000..652166a9
 +        count: Number(row[2] || 0),
 +        lastDancedAt: row[3] || '',
 +        note: row[4] || '',
-+        noteUpdatedAt: row[5] || ''
++        noteUpdatedAt: row[5] || '',
++        lastClubId: row[6] || null,
++        lastClubName: row[7] || ''
++    };
++}
++
++function normalizeDanceClub(row) {
++    return {
++        id: Number(row[0] || 0),
++        name: row[1] || '',
++        createdAt: row[2] || '',
++        updatedAt: row[3] || ''
 +    };
 +}
 +
@@ -809,17 +1143,37 @@ index 00000000..652166a9
 +    async initDanceTables() {
 +        const eventsTable = getDanceEventsTable();
 +        const notesTable = getDanceNotesTable();
++        const clubsTable = getDanceClubsTable();
 +
 +        await sqliteService.executeNonQuery(
 +            `CREATE TABLE IF NOT EXISTS ${eventsTable} (
 +                id INTEGER PRIMARY KEY,
 +                user_id TEXT NOT NULL,
 +                display_name TEXT,
-+                danced_at TEXT NOT NULL
++                danced_at TEXT NOT NULL,
++                club_id INTEGER DEFAULT NULL
 +            )`
 +        );
++        try {
++            await sqliteService.executeNonQuery(
++                `ALTER TABLE ${eventsTable} ADD club_id INTEGER DEFAULT NULL`
++            );
++        } catch (e) {
++            const message = e.toString();
++            if (message.indexOf('duplicate column name') === -1) {
++                console.error(message);
++            }
++        }
 +        await sqliteService.executeNonQuery(
 +            `CREATE INDEX IF NOT EXISTS ${eventsTable}_user_danced_idx ON ${eventsTable} (user_id, danced_at)`
++        );
++        await sqliteService.executeNonQuery(
++            `CREATE TABLE IF NOT EXISTS ${clubsTable} (
++                id INTEGER PRIMARY KEY,
++                name TEXT NOT NULL UNIQUE,
++                created_at TEXT NOT NULL,
++                updated_at TEXT NOT NULL
++            )`
 +        );
 +        await sqliteService.executeNonQuery(
 +            `CREATE TABLE IF NOT EXISTS ${notesTable} (
@@ -832,12 +1186,13 @@ index 00000000..652166a9
 +
 +    async addDanceEvent(entry) {
 +        await sqliteService.executeNonQuery(
-+            `INSERT INTO ${getDanceEventsTable()} (user_id, display_name, danced_at)
-+            VALUES (@user_id, @display_name, @danced_at)`,
++            `INSERT INTO ${getDanceEventsTable()} (user_id, display_name, danced_at, club_id)
++            VALUES (@user_id, @display_name, @danced_at, @club_id)`,
 +            {
 +                '@user_id': entry.userId,
 +                '@display_name': entry.displayName || '',
-+                '@danced_at': entry.dancedAt
++                '@danced_at': entry.dancedAt,
++                '@club_id': entry.clubId || null
 +            }
 +        );
 +    },
@@ -846,6 +1201,7 @@ index 00000000..652166a9
 +        const rows = [];
 +        const eventsTable = getDanceEventsTable();
 +        const notesTable = getDanceNotesTable();
++        const clubsTable = getDanceClubsTable();
 +
 +        await sqliteService.execute(
 +            (dbRow) => {
@@ -866,9 +1222,18 @@ index 00000000..652166a9
 +                COUNT(e.id) AS dance_count,
 +                MAX(e.danced_at) AS last_danced_at,
 +                COALESCE(n.note, '') AS note,
-+                COALESCE(n.updated_at, '') AS note_updated_at
++                COALESCE(n.updated_at, '') AS note_updated_at,
++                lc.id AS last_club_id,
++                COALESCE(lc.name, '') AS last_club_name
 +            FROM ${eventsTable} e
 +            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
++            LEFT JOIN ${clubsTable} lc ON lc.id = (
++                SELECT e3.club_id
++                FROM ${eventsTable} e3
++                WHERE e3.user_id = e.user_id
++                ORDER BY e3.danced_at DESC, e3.id DESC
++                LIMIT 1
++            )
 +            GROUP BY e.user_id
 +            ORDER BY MAX(e.danced_at) DESC, display_name ASC`
 +        );
@@ -880,6 +1245,7 @@ index 00000000..652166a9
 +        let aggregate = null;
 +        const eventsTable = getDanceEventsTable();
 +        const notesTable = getDanceNotesTable();
++        const clubsTable = getDanceClubsTable();
 +
 +        await sqliteService.execute(
 +            (dbRow) => {
@@ -900,9 +1266,18 @@ index 00000000..652166a9
 +                COUNT(e.id) AS dance_count,
 +                MAX(e.danced_at) AS last_danced_at,
 +                COALESCE(n.note, '') AS note,
-+                COALESCE(n.updated_at, '') AS note_updated_at
++                COALESCE(n.updated_at, '') AS note_updated_at,
++                lc.id AS last_club_id,
++                COALESCE(lc.name, '') AS last_club_name
 +            FROM ${eventsTable} e
 +            LEFT JOIN ${notesTable} n ON n.user_id = e.user_id
++            LEFT JOIN ${clubsTable} lc ON lc.id = (
++                SELECT e3.club_id
++                FROM ${eventsTable} e3
++                WHERE e3.user_id = e.user_id
++                ORDER BY e3.danced_at DESC, e3.id DESC
++                LIMIT 1
++            )
 +            WHERE e.user_id = @user_id
 +            GROUP BY e.user_id`,
 +            {
@@ -922,7 +1297,9 @@ index 00000000..652166a9
 +                    count: 0,
 +                    lastDancedAt: '',
 +                    note: dbRow[0] || '',
-+                    noteUpdatedAt: dbRow[1] || ''
++                    noteUpdatedAt: dbRow[1] || '',
++                    lastClubId: null,
++                    lastClubName: ''
 +                };
 +            },
 +            `SELECT note, updated_at FROM ${notesTable} WHERE user_id = @user_id`,
@@ -938,7 +1315,9 @@ index 00000000..652166a9
 +                count: 0,
 +                lastDancedAt: '',
 +                note: '',
-+                noteUpdatedAt: ''
++                noteUpdatedAt: '',
++                lastClubId: null,
++                lastClubName: ''
 +            }
 +        );
 +    },
@@ -951,13 +1330,16 @@ index 00000000..652166a9
 +                    id: dbRow[0],
 +                    userId: dbRow[1],
 +                    displayName: dbRow[2] || '',
-+                    dancedAt: dbRow[3] || ''
++                    dancedAt: dbRow[3] || '',
++                    clubId: dbRow[4] || null,
++                    clubName: dbRow[5] || ''
 +                });
 +            },
-+            `SELECT id, user_id, display_name, danced_at
-+            FROM ${getDanceEventsTable()}
-+            WHERE user_id = @user_id
-+            ORDER BY danced_at DESC, id DESC`,
++            `SELECT e.id, e.user_id, e.display_name, e.danced_at, e.club_id, COALESCE(c.name, '')
++            FROM ${getDanceEventsTable()} e
++            LEFT JOIN ${getDanceClubsTable()} c ON c.id = e.club_id
++            WHERE e.user_id = @user_id
++            ORDER BY e.danced_at DESC, e.id DESC`,
 +            {
 +                '@user_id': userId
 +            }
@@ -993,6 +1375,60 @@ index 00000000..652166a9
 +                '@user_id': entry.userId,
 +                '@note': note,
 +                '@updated_at': entry.updatedAt
++            }
++        );
++    },
++
++    async getDanceClubs() {
++        const rows = [];
++        await sqliteService.execute((dbRow) => {
++            rows.push(normalizeDanceClub(dbRow));
++        }, `SELECT id, name, created_at, updated_at FROM ${getDanceClubsTable()} ORDER BY name COLLATE NOCASE ASC`);
++        return rows;
++    },
++
++    async addDanceClub(entry) {
++        const name = String(entry.name || '').trim();
++        if (!name) {
++            return null;
++        }
++
++        await sqliteService.executeNonQuery(
++            `INSERT OR IGNORE INTO ${getDanceClubsTable()} (name, created_at, updated_at)
++            VALUES (@name, @created_at, @updated_at)`,
++            {
++                '@name': name,
++                '@created_at': entry.createdAt,
++                '@updated_at': entry.updatedAt
++            }
++        );
++
++        let club = null;
++        await sqliteService.execute(
++            (dbRow) => {
++                club = normalizeDanceClub(dbRow);
++            },
++            `SELECT id, name, created_at, updated_at
++            FROM ${getDanceClubsTable()}
++            WHERE name = @name`,
++            {
++                '@name': name
++            }
++        );
++        return club;
++    },
++
++    async deleteDanceClub(id) {
++        await sqliteService.executeNonQuery(
++            `UPDATE ${getDanceEventsTable()} SET club_id = NULL WHERE club_id = @id`,
++            {
++                '@id': id
++            }
++        );
++        await sqliteService.executeNonQuery(
++            `DELETE FROM ${getDanceClubsTable()} WHERE id = @id`,
++            {
++                '@id': id
 +            }
 +        );
 +    }
@@ -1047,10 +1483,10 @@ index 48ff63fa..336f5422 100644
          icon: 'ri-search-line',
 diff --git a/src/stores/dance.js b/src/stores/dance.js
 new file mode 100644
-index 00000000..9ddc086e
+index 00000000..91b503aa
 --- /dev/null
 +++ b/src/stores/dance.js
-@@ -0,0 +1,206 @@
+@@ -0,0 +1,262 @@
 +import { computed, ref } from 'vue';
 +import { defineStore } from 'pinia';
 +
@@ -1064,7 +1500,9 @@ index 00000000..9ddc086e
 +        count: 0,
 +        lastDancedAt: '',
 +        note: '',
-+        noteUpdatedAt: ''
++        noteUpdatedAt: '',
++        lastClubId: null,
++        lastClubName: ''
 +    };
 +}
 +
@@ -1077,7 +1515,9 @@ index 00000000..9ddc086e
 +
 +export const useDanceStore = defineStore('Dance', () => {
 +    const danceAggregates = ref([]);
++    const danceClubs = ref([]);
 +    const isDanceDataLoaded = ref(false);
++    const isDanceClubsLoaded = ref(false);
 +    const isDanceLoading = ref(false);
 +    const danceHistoryDialog = ref({
 +        visible: false,
@@ -1100,7 +1540,9 @@ index 00000000..9ddc086e
 +    async function loadDanceAggregates({ force = false } = {}) {
 +        if (!watchState.isLoggedIn) {
 +            danceAggregates.value = [];
++            danceClubs.value = [];
 +            isDanceDataLoaded.value = false;
++            isDanceClubsLoaded.value = false;
 +            return [];
 +        }
 +        if (isDanceLoading.value) {
@@ -1122,6 +1564,24 @@ index 00000000..9ddc086e
 +
 +    function ensureDanceDataLoaded() {
 +        return loadDanceAggregates();
++    }
++
++    async function loadDanceClubs({ force = false } = {}) {
++        if (!watchState.isLoggedIn) {
++            danceClubs.value = [];
++            isDanceClubsLoaded.value = false;
++            return [];
++        }
++        if (isDanceClubsLoaded.value && !force) {
++            return danceClubs.value;
++        }
++        danceClubs.value = await database.getDanceClubs();
++        isDanceClubsLoaded.value = true;
++        return danceClubs.value;
++    }
++
++    function ensureDanceClubsLoaded() {
++        return loadDanceClubs();
 +    }
 +
 +    function getDanceAggregate(userId) {
@@ -1164,7 +1624,7 @@ index 00000000..9ddc086e
 +        return aggregate;
 +    }
 +
-+    async function addDanceForUser(user) {
++    async function addDanceForUser(user, options = {}) {
 +        const { userId, displayName } = normalizeUserRef(user);
 +        if (!userId) {
 +            return createEmptyDanceAggregate();
@@ -1173,7 +1633,8 @@ index 00000000..9ddc086e
 +        await database.addDanceEvent({
 +            userId,
 +            displayName,
-+            dancedAt: new Date().toJSON()
++            dancedAt: options.dancedAt || new Date().toJSON(),
++            clubId: options.clubId || null
 +        });
 +        const aggregate = await refreshDanceAggregate(userId);
 +        if (
@@ -1183,6 +1644,31 @@ index 00000000..9ddc086e
 +            await loadDanceHistory(userId);
 +        }
 +        return aggregate;
++    }
++
++    async function addDanceClub(name) {
++        const club = await database.addDanceClub({
++            name,
++            createdAt: new Date().toJSON(),
++            updatedAt: new Date().toJSON()
++        });
++        await loadDanceClubs({ force: true });
++        return club;
++    }
++
++    async function deleteDanceClub(id) {
++        if (!id) {
++            return;
++        }
++        await database.deleteDanceClub(id);
++        await loadDanceClubs({ force: true });
++        await loadDanceAggregates({ force: true });
++        if (
++            danceHistoryDialog.value.visible &&
++            danceHistoryDialog.value.userId
++        ) {
++            await loadDanceHistory(danceHistoryDialog.value.userId);
++        }
 +    }
 +
 +    async function saveDanceNote(userId, note) {
@@ -1241,16 +1727,22 @@ index 00000000..9ddc086e
 +
 +    return {
 +        danceAggregates,
++        danceClubs,
 +        danceAggregateByUserId,
 +        danceHistoryDialog,
 +        isDanceDataLoaded,
++        isDanceClubsLoaded,
 +        isDanceLoading,
 +        loadDanceAggregates,
++        loadDanceClubs,
 +        ensureDanceDataLoaded,
++        ensureDanceClubsLoaded,
 +        getDanceAggregate,
 +        getDanceCount,
 +        refreshDanceAggregate,
 +        addDanceForUser,
++        addDanceClub,
++        deleteDanceClub,
 +        saveDanceNote,
 +        openDanceHistory,
 +        closeDanceHistory,
@@ -1285,12 +1777,130 @@ index d0cbcb03..eb7c8767 100644
      useDashboardStore,
      useAdvancedSettingsStore,
      useActivityStore,
+diff --git a/src/views/Dances/DanceClubsDialog.vue b/src/views/Dances/DanceClubsDialog.vue
+new file mode 100644
+index 00000000..5a49e1a8
+--- /dev/null
++++ b/src/views/Dances/DanceClubsDialog.vue
+@@ -0,0 +1,112 @@
++<template>
++    <Dialog :open="open" @update:open="handleOpenChange">
++        <DialogContent class="sm:max-w-md">
++            <DialogHeader>
++                <DialogTitle>{{ t('dialog.dances.clubs_title') }}</DialogTitle>
++            </DialogHeader>
++
++            <div class="flex items-center gap-2">
++                <InputGroupField
++                    v-model="clubName"
++                    data-testid="dance-club-name"
++                    :placeholder="t('dialog.dances.club_name_placeholder')"
++                    clearable
++                    @keydown.enter.prevent="addClub" />
++                <Button data-testid="add-dance-club" :disabled="!canAddClub || isSaving" @click="addClub">
++                    <Plus class="h-4 w-4" />
++                    {{ t('dialog.dances.add_club') }}
++                </Button>
++            </div>
++
++            <div
++                v-if="!danceClubs.length"
++                class="flex min-h-24 items-center justify-center text-sm text-muted-foreground">
++                {{ t('common.no_data') }}
++            </div>
++            <div v-else class="max-h-72 overflow-auto rounded-md border">
++                <div
++                    v-for="club in danceClubs"
++                    :key="club.id"
++                    class="flex items-center justify-between gap-2 border-b px-3 py-2 last:border-b-0">
++                    <span class="min-w-0 truncate text-sm">{{ club.name }}</span>
++                    <TooltipWrapper side="top" :content="t('dialog.dances.delete_club')">
++                        <Button variant="ghost" size="icon-sm" @click="deleteClub(club.id)">
++                            <Trash2 class="h-4 w-4 text-destructive" />
++                        </Button>
++                    </TooltipWrapper>
++                </div>
++            </div>
++
++            <DialogFooter>
++                <Button variant="secondary" @click="closeDialog">
++                    {{ t('dialog.alertdialog.cancel') }}
++                </Button>
++            </DialogFooter>
++        </DialogContent>
++    </Dialog>
++</template>
++
++<script setup>
++    import { Button } from '@/components/ui/button';
++    import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
++    import { InputGroupField } from '@/components/ui/input-group';
++    import { Plus, Trash2 } from 'lucide-vue-next';
++    import { computed, ref, watch } from 'vue';
++    import { storeToRefs } from 'pinia';
++    import { useI18n } from 'vue-i18n';
++
++    import { TooltipWrapper } from '../../components/ui/tooltip';
++    import { useDanceStore } from '../../stores';
++
++    const props = defineProps({
++        open: { type: Boolean, default: false }
++    });
++
++    const emit = defineEmits(['update:open']);
++
++    const { t } = useI18n();
++    const danceStore = useDanceStore();
++    const { danceClubs } = storeToRefs(danceStore);
++    const clubName = ref('');
++    const isSaving = ref(false);
++    const canAddClub = computed(() => clubName.value.trim().length > 0);
++
++    watch(
++        () => props.open,
++        (open) => {
++            if (open) {
++                danceStore.loadDanceClubs({ force: true });
++            }
++        },
++        { immediate: true }
++    );
++
++    function handleOpenChange(open) {
++        if (!open) {
++            closeDialog();
++            return;
++        }
++        emit('update:open', true);
++    }
++
++    function closeDialog() {
++        emit('update:open', false);
++    }
++
++    async function addClub() {
++        if (!canAddClub.value || isSaving.value) {
++            return;
++        }
++        isSaving.value = true;
++        try {
++            await danceStore.addDanceClub(clubName.value);
++            clubName.value = '';
++        } finally {
++            isSaving.value = false;
++        }
++    }
++
++    function deleteClub(id) {
++        danceStore.deleteDanceClub(id);
++    }
++</script>
 diff --git a/src/views/Dances/Dances.vue b/src/views/Dances/Dances.vue
 new file mode 100644
-index 00000000..445a1539
+index 00000000..5556d462
 --- /dev/null
 +++ b/src/views/Dances/Dances.vue
-@@ -0,0 +1,167 @@
+@@ -0,0 +1,173 @@
 +<template>
 +    <div class="x-container x-container--auto-height">
 +        <div class="flex-1 min-h-0 flex flex-col">
@@ -1301,9 +1911,8 @@ index 00000000..445a1539
 +                auto-height
 +                :page-sizes="pageSizes"
 +                :total-items="totalItems"
-+                table-class="min-w-max w-max [&_tbody_tr]:cursor-pointer"
-+                :on-page-size-change="handlePageSizeChange"
-+                :on-row-click="handleRowClick">
++                table-class="min-w-max w-max"
++                :on-page-size-change="handlePageSizeChange">
 +                <template #toolbar>
 +                    <div class="mb-2 flex items-center justify-between gap-2">
 +                        <InputGroupField
@@ -1324,18 +1933,28 @@ index 00000000..445a1539
 +                                <RefreshCw v-else />
 +                            </Button>
 +                        </TooltipWrapper>
++                        <TooltipWrapper side="bottom" :content="t('view.dances.manage_clubs')">
++                            <Button
++                                class="rounded-full"
++                                variant="ghost"
++                                size="icon-sm"
++                                @click="isDanceClubsDialogVisible = true">
++                                <Building2 />
++                            </Button>
++                        </TooltipWrapper>
 +                    </div>
 +                </template>
 +            </DataTableLayout>
 +        </div>
 +    </div>
++    <DanceClubsDialog v-model:open="isDanceClubsDialogVisible" />
 +</template>
 +
 +<script setup>
 +    import { Button } from '@/components/ui/button';
 +    import { DataTableLayout } from '@/components/ui/data-table';
 +    import { InputGroupField } from '@/components/ui/input-group';
-+    import { RefreshCw } from 'lucide-vue-next';
++    import { Building2, RefreshCw } from 'lucide-vue-next';
 +    import { Spinner } from '@/components/ui/spinner';
 +    import { TooltipWrapper } from '@/components/ui/tooltip';
 +    import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -1343,6 +1962,7 @@ index 00000000..445a1539
 +    import { useI18n } from 'vue-i18n';
 +
 +    import { createColumns } from './columns.jsx';
++    import DanceClubsDialog from './DanceClubsDialog.vue';
 +    import { localeIncludes } from '../../shared/utils';
 +    import { showUserDialog } from '../../coordinators/userCoordinator';
 +    import { useAppearanceSettingsStore, useDanceStore, useSearchStore } from '../../stores';
@@ -1356,6 +1976,7 @@ index 00000000..445a1539
 +
 +    const danceSearch = ref('');
 +    const filteredDanceRows = ref([]);
++    const isDanceClubsDialogVisible = ref(false);
 +    const pageSizes = computed(() => appearanceSettingsStore.tablePageSizes);
 +    const DANCE_SEARCH_DEBOUNCE_MS = 150;
 +    let danceSearchTimer = 0;
@@ -1363,6 +1984,7 @@ index 00000000..445a1539
 +    const columns = computed(() =>
 +        createColumns({
 +            onSaveNote: saveDanceNote,
++            onShowUser: showUserDialog,
 +            onShowHistory: danceStore.openDanceHistory
 +        })
 +    );
@@ -1436,6 +2058,7 @@ index 00000000..445a1539
 +            return (
 +                localeIncludes(row.displayName || '', query, stringComparer.value) ||
 +                localeIncludes(row.userId || '', query, stringComparer.value) ||
++                localeIncludes(row.lastClubName || '', query, stringComparer.value) ||
 +                localeIncludes(row.note || '', query, stringComparer.value)
 +            );
 +        });
@@ -1450,20 +2073,156 @@ index 00000000..445a1539
 +        await danceStore.saveDanceNote(userId, note);
 +        applyDanceSearchChange();
 +    }
++</script>
+diff --git a/src/views/Dances/__tests__/columns.test.js b/src/views/Dances/__tests__/columns.test.js
+new file mode 100644
+index 00000000..b6663cae
+--- /dev/null
++++ b/src/views/Dances/__tests__/columns.test.js
+@@ -0,0 +1,137 @@
++import { beforeEach, describe, expect, test, vi } from 'vitest';
 +
-+    function handleRowClick(row) {
-+        const userId = row?.original?.userId;
-+        if (userId) {
-+            showUserDialog(userId);
++const mocks = vi.hoisted(() => ({
++    formatDateFilter: vi.fn((value) => `formatted:${value}`),
++    onSaveNote: vi.fn(),
++    onShowUser: vi.fn(),
++    onShowHistory: vi.fn()
++}));
++
++vi.mock('../../../plugins', () => ({
++    i18n: {
++        global: {
++            t: (key) => key
 +        }
 +    }
-+</script>
++}));
++
++vi.mock('../../../shared/utils', () => ({
++    formatDateFilter: (...args) => mocks.formatDateFilter(...args)
++}));
++
++vi.mock('../../../components/ui/button', () => ({
++    Button: 'Button'
++}));
++
++vi.mock('../../../components/ui/input-group', () => ({
++    InputGroupField: 'InputGroupField'
++}));
++
++vi.mock('../../../components/ui/tooltip', () => ({
++    TooltipWrapper: 'TooltipWrapper'
++}));
++
++vi.mock('lucide-vue-next', () => ({
++    ArrowUpDown: 'ArrowUpDown',
++    History: 'History'
++}));
++
++import { createColumns } from '../columns.jsx';
++
++function createElement(type, props, ...children) {
++    return {
++        type,
++        props: props ?? {},
++        children: children.flat()
++    };
++}
++
++function findNode(node, predicate) {
++    if (!node) return null;
++    if (Array.isArray(node)) {
++        for (const item of node) {
++            const result = findNode(item, predicate);
++            if (result) return result;
++        }
++        return null;
++    }
++    if (predicate(node)) return node;
++    if (!node.children) return null;
++    return findNode(node.children, predicate);
++}
++
++function makeColumns() {
++    return createColumns({
++        onSaveNote: mocks.onSaveNote,
++        onShowUser: mocks.onShowUser,
++        onShowHistory: mocks.onShowHistory
++    });
++}
++
++describe('views/Dances/columns.jsx', () => {
++    beforeEach(() => {
++        globalThis.React = { createElement };
++        mocks.formatDateFilter.mockClear();
++        mocks.onSaveNote.mockReset();
++        mocks.onShowUser.mockReset();
++        mocks.onShowHistory.mockReset();
++    });
++
++    test('opens user profile only from the user name cell', () => {
++        const row = {
++            original: {
++                userId: 'usr_1',
++                displayName: 'Alice'
++            }
++        };
++        const displayNameCol = makeColumns().find(
++            (column) => column.id === 'displayName'
++        );
++        const stopPropagation = vi.fn();
++
++        displayNameCol.cell({ row }).props.onClick({ stopPropagation });
++
++        expect(stopPropagation).toHaveBeenCalledTimes(1);
++        expect(mocks.onShowUser).toHaveBeenCalledWith('usr_1');
++    });
++
++    test('note cell saves note without opening profile', () => {
++        const row = {
++            original: {
++                userId: 'usr_1',
++                displayName: 'Alice',
++                note: 'old'
++            }
++        };
++        const noteCol = makeColumns().find((column) => column.id === 'note');
++        const noteCell = noteCol.cell({ row });
++        const stopPropagation = vi.fn();
++
++        noteCell.props.onClick({ stopPropagation });
++        noteCell.props.onChange('new');
++
++        expect(stopPropagation).toHaveBeenCalledTimes(1);
++        expect(mocks.onSaveNote).toHaveBeenCalledWith('usr_1', 'new');
++        expect(mocks.onShowUser).not.toHaveBeenCalled();
++    });
++
++    test('date cell has no profile click handler', () => {
++        const row = {
++            original: {
++                lastDancedAt: '2026-05-04T01:02:03.000Z'
++            }
++        };
++        const dateCol = makeColumns().find(
++            (column) => column.id === 'lastDancedAt'
++        );
++        const dateCell = dateCol.cell({ row });
++
++        expect(
++            findNode(dateCell, (node) => Boolean(node.props?.onClick))
++        ).toBeNull();
++        expect(mocks.formatDateFilter).toHaveBeenCalledWith(
++            row.original.lastDancedAt,
++            'long'
++        );
++    });
++});
 diff --git a/src/views/Dances/columns.jsx b/src/views/Dances/columns.jsx
 new file mode 100644
-index 00000000..92af8e1e
+index 00000000..65382f88
 --- /dev/null
 +++ b/src/views/Dances/columns.jsx
-@@ -0,0 +1,142 @@
+@@ -0,0 +1,176 @@
 +import { ArrowUpDown, History } from 'lucide-vue-next';
 +
 +import { Button } from '../../components/ui/button';
@@ -1501,7 +2260,7 @@ index 00000000..92af8e1e
 +        .toLowerCase()
 +        .localeCompare(String(b || '').toLowerCase());
 +
-+export const createColumns = ({ onSaveNote, onShowHistory }) => [
++export const createColumns = ({ onSaveNote, onShowUser, onShowHistory }) => [
 +    {
 +        id: 'displayName',
 +        accessorFn: (row) => row?.displayName,
@@ -1516,11 +2275,24 @@ index 00000000..92af8e1e
 +        },
 +        sortingFn: (rowA, rowB) =>
 +            sortText(rowA.original?.displayName, rowB.original?.displayName),
-+        cell: ({ row }) => (
-+            <span class="block min-w-0 truncate">
-+                {row.original?.displayName || row.original?.userId || ''}
-+            </span>
-+        )
++        cell: ({ row }) => {
++            const userId = row.original?.userId || '';
++            const label = row.original?.displayName || userId;
++            return (
++                <button
++                    type="button"
++                    class="block min-w-0 max-w-full truncate text-left underline-offset-2 hover:underline"
++                    onClick={(event) => {
++                        event.stopPropagation();
++                        if (userId) {
++                            onShowUser?.(userId);
++                        }
++                    }}
++                >
++                    {label}
++                </button>
++            );
++        }
 +    },
 +    {
 +        id: 'count',
@@ -1556,6 +2328,27 @@ index 00000000..92af8e1e
 +            sortText(rowA.original?.lastDancedAt, rowB.original?.lastDancedAt),
 +        cell: ({ row }) => (
 +            <span>{formatDateFilter(row.original?.lastDancedAt, 'long')}</span>
++        )
++    },
++    {
++        id: 'lastClubName',
++        accessorFn: (row) => row?.lastClubName,
++        header: ({ column }) =>
++            sortButton({
++                column,
++                label: () => t('table.dances.club')
++            }),
++        size: 180,
++        meta: {
++            label: () => t('table.dances.club')
++        },
++        sortingFn: (rowA, rowB) =>
++            sortText(rowA.original?.lastClubName, rowB.original?.lastClubName),
++        cell: ({ row }) => (
++            <span class="block min-w-0 truncate">
++                {row.original?.lastClubName ||
++                    t('dialog.user.info.dance_club_none')}
++            </span>
 +        )
 +    },
 +    {

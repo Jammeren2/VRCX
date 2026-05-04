@@ -35,7 +35,7 @@ const sortText = (a, b) =>
         .toLowerCase()
         .localeCompare(String(b || '').toLowerCase());
 
-export const createColumns = ({ onSaveNote, onShowHistory }) => [
+export const createColumns = ({ onSaveNote, onShowUser, onShowHistory }) => [
     {
         id: 'displayName',
         accessorFn: (row) => row?.displayName,
@@ -50,11 +50,24 @@ export const createColumns = ({ onSaveNote, onShowHistory }) => [
         },
         sortingFn: (rowA, rowB) =>
             sortText(rowA.original?.displayName, rowB.original?.displayName),
-        cell: ({ row }) => (
-            <span class="block min-w-0 truncate">
-                {row.original?.displayName || row.original?.userId || ''}
-            </span>
-        )
+        cell: ({ row }) => {
+            const userId = row.original?.userId || '';
+            const label = row.original?.displayName || userId;
+            return (
+                <button
+                    type="button"
+                    class="block min-w-0 max-w-full truncate text-left underline-offset-2 hover:underline"
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        if (userId) {
+                            onShowUser?.(userId);
+                        }
+                    }}
+                >
+                    {label}
+                </button>
+            );
+        }
     },
     {
         id: 'count',
@@ -90,6 +103,27 @@ export const createColumns = ({ onSaveNote, onShowHistory }) => [
             sortText(rowA.original?.lastDancedAt, rowB.original?.lastDancedAt),
         cell: ({ row }) => (
             <span>{formatDateFilter(row.original?.lastDancedAt, 'long')}</span>
+        )
+    },
+    {
+        id: 'lastClubName',
+        accessorFn: (row) => row?.lastClubName,
+        header: ({ column }) =>
+            sortButton({
+                column,
+                label: () => t('table.dances.club')
+            }),
+        size: 180,
+        meta: {
+            label: () => t('table.dances.club')
+        },
+        sortingFn: (rowA, rowB) =>
+            sortText(rowA.original?.lastClubName, rowB.original?.lastClubName),
+        cell: ({ row }) => (
+            <span class="block min-w-0 truncate">
+                {row.original?.lastClubName ||
+                    t('dialog.user.info.dance_club_none')}
+            </span>
         )
     },
     {

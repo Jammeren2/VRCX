@@ -309,7 +309,8 @@
         "dances": {
             "search_placeholder": "Search danced users",
             "note_placeholder": "Dance note",
-            "history": "Dance history"
+            "history": "Dance history",
+            "manage_clubs": "Manage dance clubs"
         },
         "my_avatars": {
             "filter": "Filter",
@@ -1308,7 +1309,11 @@
         },
         "dances": {
             "history_title": "Dance history: {name}",
-            "delete_event": "Delete dance"
+            "delete_event": "Delete dance",
+            "clubs_title": "Dance Clubs",
+            "club_name_placeholder": "Club name",
+            "add_club": "Add",
+            "delete_club": "Delete club"
         },
         "user": {
             "status": {
@@ -1405,8 +1410,19 @@
                 "dances": "Dances",
                 "dance_count": "Danced {count} times",
                 "last_danced_at": "Last: {date}",
+                "last_dance_club": "Club: {club}",
                 "add_dance": "Add Dance",
                 "remove_dance": "Remove Dance",
+                "dance_entry_title": "Add Dance",
+                "dance_entry_description": "Choose a club and add a note for {name}. Both can be empty.",
+                "dance_club": "Club",
+                "dance_club_none": "None",
+                "dance_note": "Dance Note",
+                "dance_note_title": "Dance Note",
+                "dance_note_description": "Add a note for {name}. Empty note is allowed.",
+                "dance_note_placeholder": "Note about the dance",
+                "apply_dance_note": "Apply",
+                "apply_dance_entry": "Apply",
                 "online_for": "Online For",
                 "offline_for": "Offline For",
                 "last_activity": "Last Activity",
@@ -2705,7 +2721,8 @@
             "updated": "Badge updated"
         },
         "dances": {
-            "added": "Dance added"
+            "added": "Dance added",
+            "note_saved": "Dance note saved"
         },
         "instance": {
             "closed": "Instance closed",
@@ -2930,6 +2947,7 @@
             "user": "User",
             "count": "Dances",
             "lastDancedAt": "Last Dance",
+            "club": "Club",
             "note": "Dance Note",
             "action": "Action"
         },

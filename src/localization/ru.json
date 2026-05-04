@@ -93,7 +93,8 @@
         "dances": {
             "search_placeholder": "Поиск оттанцованных пользователей",
             "note_placeholder": "Заметка по танцу",
-            "history": "История танцев"
+            "history": "История танцев",
+            "manage_clubs": "Управление клубами"
         },
         "search": {
             "search_placeholder": "Поиск",
@@ -552,7 +553,11 @@
         },
         "dances": {
             "history_title": "История танцев: {name}",
-            "delete_event": "Удалить танец"
+            "delete_event": "Удалить танец",
+            "clubs_title": "Клубы для танцев",
+            "club_name_placeholder": "Название клуба",
+            "add_club": "Добавить",
+            "delete_club": "Удалить клуб"
         },
         "user": {
             "status": {
@@ -639,8 +644,19 @@
                 "dances": "Танцы",
                 "dance_count": "Оттанцовано {count} раз",
                 "last_danced_at": "Последний: {date}",
+                "last_dance_club": "Клуб: {club}",
                 "add_dance": "Добавить танец",
                 "remove_dance": "Убрать танец",
+                "dance_entry_title": "Добавить танец",
+                "dance_entry_description": "Выберите клуб и добавьте заметку для {name}. Оба поля можно оставить пустыми.",
+                "dance_club": "Клуб",
+                "dance_club_none": "Нет",
+                "dance_note": "Заметка по танцу",
+                "dance_note_title": "Заметка по танцу",
+                "dance_note_description": "Добавьте заметку для {name}. Можно оставить пустой.",
+                "dance_note_placeholder": "Заметка по танцу",
+                "apply_dance_note": "Применить",
+                "apply_dance_entry": "Применить",
                 "online_for": "В сети",
                 "offline_for": "Не в сети",
                 "last_activity": "Последняя активность",
@@ -1678,7 +1694,8 @@
             "updated": "Значок обновлен"
         },
         "dances": {
-            "added": "Танец добавлен"
+            "added": "Танец добавлен",
+            "note_saved": "Заметка по танцу сохранена"
         },
         "instance": {
             "closed": "Инстанс закрыт",
@@ -1745,6 +1762,7 @@
             "user": "Пользователь",
             "count": "Танцы",
             "lastDancedAt": "Последний танец",
+            "club": "Клуб",
             "note": "Заметка по танцу",
             "action": "Действие"
         },

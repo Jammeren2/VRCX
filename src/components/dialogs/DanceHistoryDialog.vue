@@ -29,6 +29,9 @@
                             <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
                                 {{ t('table.dances.user') }}
                             </th>
+                            <th class="sticky top-0 z-10 bg-background px-3 py-2 text-left font-medium">
+                                {{ t('table.dances.club') }}
+                            </th>
                             <th class="sticky top-0 z-10 bg-background px-3 py-2 text-right font-medium">
                                 {{ t('table.dances.action') }}
                             </th>
@@ -39,6 +42,9 @@
                             <td class="px-3 py-2">{{ formatDateFilter(event.dancedAt, 'long') }}</td>
                             <td class="truncate px-3 py-2">
                                 {{ event.displayName || danceHistoryDialog.displayName }}
+                            </td>
+                            <td class="truncate px-3 py-2">
+                                {{ event.clubName || t('dialog.user.info.dance_club_none') }}
                             </td>
                             <td class="px-3 py-2 text-right">
                                 <TooltipWrapper side="top" :content="t('dialog.dances.delete_event')">

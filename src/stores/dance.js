@@ -11,7 +11,9 @@ function createEmptyDanceAggregate(userId = '') {
         count: 0,
         lastDancedAt: '',
         note: '',
-        noteUpdatedAt: ''
+        noteUpdatedAt: '',
+        lastClubId: null,
+        lastClubName: ''
     };
 }
 
@@ -24,7 +26,9 @@ function normalizeUserRef(user) {
 
 export const useDanceStore = defineStore('Dance', () => {
     const danceAggregates = ref([]);
+    const danceClubs = ref([]);
     const isDanceDataLoaded = ref(false);
+    const isDanceClubsLoaded = ref(false);
     const isDanceLoading = ref(false);
     const danceHistoryDialog = ref({
         visible: false,
@@ -47,7 +51,9 @@ export const useDanceStore = defineStore('Dance', () => {
     async function loadDanceAggregates({ force = false } = {}) {
         if (!watchState.isLoggedIn) {
             danceAggregates.value = [];
+            danceClubs.value = [];
             isDanceDataLoaded.value = false;
+            isDanceClubsLoaded.value = false;
             return [];
         }
         if (isDanceLoading.value) {
@@ -69,6 +75,24 @@ export const useDanceStore = defineStore('Dance', () => {
 
     function ensureDanceDataLoaded() {
         return loadDanceAggregates();
+    }
+
+    async function loadDanceClubs({ force = false } = {}) {
+        if (!watchState.isLoggedIn) {
+            danceClubs.value = [];
+            isDanceClubsLoaded.value = false;
+            return [];
+        }
+        if (isDanceClubsLoaded.value && !force) {
+            return danceClubs.value;
+        }
+        danceClubs.value = await database.getDanceClubs();
+        isDanceClubsLoaded.value = true;
+        return danceClubs.value;
+    }
+
+    function ensureDanceClubsLoaded() {
+        return loadDanceClubs();
     }
 
     function getDanceAggregate(userId) {
@@ -111,7 +135,7 @@ export const useDanceStore = defineStore('Dance', () => {
         return aggregate;
     }
 
-    async function addDanceForUser(user) {
+    async function addDanceForUser(user, options = {}) {
         const { userId, displayName } = normalizeUserRef(user);
         if (!userId) {
             return createEmptyDanceAggregate();
@@ -120,7 +144,8 @@ export const useDanceStore = defineStore('Dance', () => {
         await database.addDanceEvent({
             userId,
             displayName,
-            dancedAt: new Date().toJSON()
+            dancedAt: options.dancedAt || new Date().toJSON(),
+            clubId: options.clubId || null
         });
         const aggregate = await refreshDanceAggregate(userId);
         if (
@@ -130,6 +155,31 @@ export const useDanceStore = defineStore('Dance', () => {
             await loadDanceHistory(userId);
         }
         return aggregate;
+    }
+
+    async function addDanceClub(name) {
+        const club = await database.addDanceClub({
+            name,
+            createdAt: new Date().toJSON(),
+            updatedAt: new Date().toJSON()
+        });
+        await loadDanceClubs({ force: true });
+        return club;
+    }
+
+    async function deleteDanceClub(id) {
+        if (!id) {
+            return;
+        }
+        await database.deleteDanceClub(id);
+        await loadDanceClubs({ force: true });
+        await loadDanceAggregates({ force: true });
+        if (
+            danceHistoryDialog.value.visible &&
+            danceHistoryDialog.value.userId
+        ) {
+            await loadDanceHistory(danceHistoryDialog.value.userId);
+        }
     }
 
     async function saveDanceNote(userId, note) {
@@ -188,16 +238,22 @@ export const useDanceStore = defineStore('Dance', () => {
 
     return {
         danceAggregates,
+        danceClubs,
         danceAggregateByUserId,
         danceHistoryDialog,
         isDanceDataLoaded,
+        isDanceClubsLoaded,
         isDanceLoading,
         loadDanceAggregates,
+        loadDanceClubs,
         ensureDanceDataLoaded,
+        ensureDanceClubsLoaded,
         getDanceAggregate,
         getDanceCount,
         refreshDanceAggregate,
         addDanceForUser,
+        addDanceClub,
+        deleteDanceClub,
         saveDanceNote,
         openDanceHistory,
         closeDanceHistory,

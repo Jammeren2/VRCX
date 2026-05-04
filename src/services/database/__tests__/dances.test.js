@@ -29,14 +29,20 @@ describe('database/dances', () => {
     test('creates per-user dance tables and index', async () => {
         await dances.initDanceTables();
 
-        expect(mocks.executeNonQuery).toHaveBeenCalledTimes(3);
+        expect(mocks.executeNonQuery).toHaveBeenCalledTimes(5);
         expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
             'CREATE TABLE IF NOT EXISTS usrprefix_dance_events'
         );
         expect(mocks.executeNonQuery.mock.calls[1][0]).toContain(
-            'CREATE INDEX IF NOT EXISTS usrprefix_dance_events_user_danced_idx'
+            'ALTER TABLE usrprefix_dance_events ADD club_id'
         );
         expect(mocks.executeNonQuery.mock.calls[2][0]).toContain(
+            'CREATE INDEX IF NOT EXISTS usrprefix_dance_events_user_danced_idx'
+        );
+        expect(mocks.executeNonQuery.mock.calls[3][0]).toContain(
+            'CREATE TABLE IF NOT EXISTS usrprefix_dance_clubs'
+        );
+        expect(mocks.executeNonQuery.mock.calls[4][0]).toContain(
             'CREATE TABLE IF NOT EXISTS usrprefix_dance_notes'
         );
     });
@@ -45,7 +51,8 @@ describe('database/dances', () => {
         await dances.addDanceEvent({
             userId: 'usr_1',
             displayName: 'Alice',
-            dancedAt: '2026-05-04T01:02:03.000Z'
+            dancedAt: '2026-05-04T01:02:03.000Z',
+            clubId: 7
         });
 
         expect(mocks.executeNonQuery).toHaveBeenCalledWith(
@@ -53,7 +60,8 @@ describe('database/dances', () => {
             {
                 '@user_id': 'usr_1',
                 '@display_name': 'Alice',
-                '@danced_at': '2026-05-04T01:02:03.000Z'
+                '@danced_at': '2026-05-04T01:02:03.000Z',
+                '@club_id': 7
             }
         );
     });
@@ -66,7 +74,9 @@ describe('database/dances', () => {
                 2,
                 '2026-05-04T01:02:03.000Z',
                 'smooth',
-                '2026-05-04T02:00:00.000Z'
+                '2026-05-04T02:00:00.000Z',
+                7,
+                'Shelter'
             ]);
         });
 
@@ -79,7 +89,9 @@ describe('database/dances', () => {
                 count: 2,
                 lastDancedAt: '2026-05-04T01:02:03.000Z',
                 note: 'smooth',
-                noteUpdatedAt: '2026-05-04T02:00:00.000Z'
+                noteUpdatedAt: '2026-05-04T02:00:00.000Z',
+                lastClubId: 7,
+                lastClubName: 'Shelter'
             }
         ]);
         expect(mocks.execute.mock.calls[0][1]).toContain(
@@ -88,6 +100,69 @@ describe('database/dances', () => {
         expect(mocks.execute.mock.calls[0][1]).toContain(
             'LEFT JOIN usrprefix_dance_notes'
         );
+    });
+
+    test('manages dance clubs', async () => {
+        mocks.execute.mockImplementation(async (callback) => {
+            callback([
+                7,
+                'Shelter',
+                '2026-05-04T01:00:00.000Z',
+                '2026-05-04T01:00:00.000Z'
+            ]);
+        });
+
+        const club = await dances.addDanceClub({
+            name: 'Shelter',
+            createdAt: '2026-05-04T01:00:00.000Z',
+            updatedAt: '2026-05-04T01:00:00.000Z'
+        });
+
+        expect(mocks.executeNonQuery.mock.calls[0][0]).toContain(
+            'INSERT OR IGNORE INTO usrprefix_dance_clubs'
+        );
+        expect(club).toEqual({
+            id: 7,
+            name: 'Shelter',
+            createdAt: '2026-05-04T01:00:00.000Z',
+            updatedAt: '2026-05-04T01:00:00.000Z'
+        });
+
+        mocks.execute.mockReset();
+        mocks.execute.mockImplementation(async (callback) => {
+            callback([
+                7,
+                'Shelter',
+                '2026-05-04T01:00:00.000Z',
+                '2026-05-04T01:00:00.000Z'
+            ]);
+        });
+
+        await expect(dances.getDanceClubs()).resolves.toEqual([
+            {
+                id: 7,
+                name: 'Shelter',
+                createdAt: '2026-05-04T01:00:00.000Z',
+                updatedAt: '2026-05-04T01:00:00.000Z'
+            }
+        ]);
+    });
+
+    test('deleting a club clears references before removing it', async () => {
+        await dances.deleteDanceClub(7);
+
+        expect(mocks.executeNonQuery.mock.calls[0]).toEqual([
+            'UPDATE usrprefix_dance_events SET club_id = NULL WHERE club_id = @id',
+            {
+                '@id': 7
+            }
+        ]);
+        expect(mocks.executeNonQuery.mock.calls[1]).toEqual([
+            'DELETE FROM usrprefix_dance_clubs WHERE id = @id',
+            {
+                '@id': 7
+            }
+        ]);
     });
 
     test('saves and clears dance notes', async () => {

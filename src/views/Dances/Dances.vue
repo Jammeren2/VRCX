@@ -8,9 +8,8 @@
                 auto-height
                 :page-sizes="pageSizes"
                 :total-items="totalItems"
-                table-class="min-w-max w-max [&_tbody_tr]:cursor-pointer"
-                :on-page-size-change="handlePageSizeChange"
-                :on-row-click="handleRowClick">
+                table-class="min-w-max w-max"
+                :on-page-size-change="handlePageSizeChange">
                 <template #toolbar>
                     <div class="mb-2 flex items-center justify-between gap-2">
                         <InputGroupField
@@ -31,18 +30,28 @@
                                 <RefreshCw v-else />
                             </Button>
                         </TooltipWrapper>
+                        <TooltipWrapper side="bottom" :content="t('view.dances.manage_clubs')">
+                            <Button
+                                class="rounded-full"
+                                variant="ghost"
+                                size="icon-sm"
+                                @click="isDanceClubsDialogVisible = true">
+                                <Building2 />
+                            </Button>
+                        </TooltipWrapper>
                     </div>
                 </template>
             </DataTableLayout>
         </div>
     </div>
+    <DanceClubsDialog v-model:open="isDanceClubsDialogVisible" />
 </template>
 
 <script setup>
     import { Button } from '@/components/ui/button';
     import { DataTableLayout } from '@/components/ui/data-table';
     import { InputGroupField } from '@/components/ui/input-group';
-    import { RefreshCw } from 'lucide-vue-next';
+    import { Building2, RefreshCw } from 'lucide-vue-next';
     import { Spinner } from '@/components/ui/spinner';
     import { TooltipWrapper } from '@/components/ui/tooltip';
     import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref } from 'vue';
@@ -50,6 +59,7 @@
     import { useI18n } from 'vue-i18n';
 
     import { createColumns } from './columns.jsx';
+    import DanceClubsDialog from './DanceClubsDialog.vue';
     import { localeIncludes } from '../../shared/utils';
     import { showUserDialog } from '../../coordinators/userCoordinator';
     import { useAppearanceSettingsStore, useDanceStore, useSearchStore } from '../../stores';
@@ -63,6 +73,7 @@
 
     const danceSearch = ref('');
     const filteredDanceRows = ref([]);
+    const isDanceClubsDialogVisible = ref(false);
     const pageSizes = computed(() => appearanceSettingsStore.tablePageSizes);
     const DANCE_SEARCH_DEBOUNCE_MS = 150;
     let danceSearchTimer = 0;
@@ -70,6 +81,7 @@
     const columns = computed(() =>
         createColumns({
             onSaveNote: saveDanceNote,
+            onShowUser: showUserDialog,
             onShowHistory: danceStore.openDanceHistory
         })
     );
@@ -143,6 +155,7 @@
             return (
                 localeIncludes(row.displayName || '', query, stringComparer.value) ||
                 localeIncludes(row.userId || '', query, stringComparer.value) ||
+                localeIncludes(row.lastClubName || '', query, stringComparer.value) ||
                 localeIncludes(row.note || '', query, stringComparer.value)
             );
         });
@@ -156,12 +169,5 @@
     async function saveDanceNote(userId, note) {
         await danceStore.saveDanceNote(userId, note);
         applyDanceSearchChange();
-    }
-
-    function handleRowClick(row) {
-        const userId = row?.original?.userId;
-        if (userId) {
-            showUserDialog(userId);
-        }
     }
 </script>
